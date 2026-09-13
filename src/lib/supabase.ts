@@ -16,8 +16,8 @@ const url = (import.meta as any).env?.VITE_SUPABASE_URL as string | undefined;
 const anonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 export const sb: SupabaseClient = createClient(
-  url || 'http://localhost:54321',
-  anonKey || 'public-anon-key-placeholder'
+  url || 'https://sosjovwelbtarzvptybh.supabase.co',
+  anonKey || 'sb_publishable_rA12HvuwDIftGM-vh-bTtg_umO3VGCu'
 );
 
 export const XENA_NGN_RATE = 1500;
