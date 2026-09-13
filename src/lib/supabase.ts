@@ -12,13 +12,59 @@ import type {
   UserBalances,
 } from '../types';
 
-const url = (import.meta as any).env?.VITE_SUPABASE_URL as string | undefined;
-const anonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY as string | undefined;
+const FALLBACK_URL = 'https://sosjovwelbtarzvptybh.supabase.co';
+const FALLBACK_ANON_KEY = 'sb_publishable_rA12HvuwDIftGM-vh-bTtg_umO3VGCu';
 
-export const sb: SupabaseClient = createClient(
-  url || 'https://sosjovwelbtarzvptybh.supabase.co',
-  anonKey || 'sb_publishable_rA12HvuwDIftGM-vh-bTtg_umO3VGCu'
-);
+// Env vars are inlined by Vite at BUILD time. A malformed value (http://,
+// surrounding quotes, stray whitespace/newlines, or a trailing slash) is the
+// most common cause of a production-only "Failed to fetch" on auth calls, so
+// normalize defensively before handing the value to supabase-js.
+function normalizeUrl(raw: string | undefined): string {
+  let v = (raw ?? '').trim().replace(/^['"]+|['"]+$/g, '').trim();
+  if (!v) return '';
+  if (v.startsWith('http://')) v = 'https://' + v.slice('http://'.length); // avoid mixed-content block
+  else if (!/^https?:\/\//i.test(v)) v = 'https://' + v;
+  v = v.replace(/\/+$/, ''); // supabase-js expects no trailing slash
+  try {
+    return new URL(v).origin;
+  } catch {
+    return '';
+  }
+}
+
+const rawUrl = (import.meta as any).env?.VITE_SUPABASE_URL as string | undefined;
+const rawAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY as string | undefined;
+
+const normalizedUrl = normalizeUrl(rawUrl);
+const anonKey = (rawAnonKey ?? '').trim().replace(/^['"]+|['"]+$/g, '').trim();
+
+export const supabaseUrl = normalizedUrl || FALLBACK_URL;
+const resolvedAnonKey = anonKey || FALLBACK_ANON_KEY;
+export const usingFallbackSupabase = supabaseUrl === FALLBACK_URL && resolvedAnonKey === FALLBACK_ANON_KEY;
+
+if (rawUrl && !normalizedUrl) {
+  console.error('[v0] VITE_SUPABASE_URL is set but not a valid URL. Falling back to default project. Check the value in your Vercel project settings (it must be like https://xxxx.supabase.co).');
+} else if (!rawUrl) {
+  console.warn('[v0] VITE_SUPABASE_URL is not set at build time; using the built-in fallback Supabase project.');
+} else if (!anonKey) {
+  console.error('[v0] VITE_SUPABASE_ANON_KEY is missing while VITE_SUPABASE_URL is set. Auth requests will fail — set both in Vercel and redeploy.');
+}
+console.log('[v0] Supabase configured for host:', (() => { try { return new URL(supabaseUrl).host; } catch { return '(invalid)'; } })());
+
+export const sb: SupabaseClient = createClient(supabaseUrl, resolvedAnonKey);
+
+// supabase-js throws a bare TypeError "Failed to fetch" when the browser can't
+// reach the project at all (wrong/typo host, paused project, mixed content,
+// blocked by an extension). Translate that into something actionable.
+export function describeAuthError(err: unknown): string {
+  const msg = (err as any)?.message ? String((err as any).message) : String(err ?? '');
+  if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+    let host = '';
+    try { host = new URL(supabaseUrl).host; } catch {}
+    return `Can't reach the authentication server${host ? ` (${host})` : ''}. Check your internet connection and that the Supabase project is active and its URL is correct.`;
+  }
+  return msg || 'Network error. Please try again.';
+}
 
 export const XENA_NGN_RATE = 1500;
 export const DEFAULT_PRICE = 2.85;
