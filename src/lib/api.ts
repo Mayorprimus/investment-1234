@@ -12,6 +12,7 @@ import {
   mapPublicState,
   mapProfileToAccount,
   getSessionToken,
+  describeAuthError,
 } from './supabase';
 import type { SupportConversation } from '../types';
 
@@ -180,7 +181,7 @@ export async function registerAccount(input: RegisterInput): Promise<AuthResult>
     if (token) setAuthToken(token);
     return { ok: true, account, role: profile?.role || 'user', token };
   } catch (e: any) {
-    return { ok: false, error: e?.message || 'Network error. Please try again.' };
+    return { ok: false, error: describeAuthError(e) };
   }
 }
 
@@ -203,7 +204,7 @@ export async function loginAccount(email: string, password: string): Promise<Aut
     if (token) setAuthToken(token);
     return { ok: true, account, role, token };
   } catch (e: any) {
-    return { ok: false, error: e?.message || 'Network error. Please try again.' };
+    return { ok: false, error: describeAuthError(e) };
   }
 }
 
