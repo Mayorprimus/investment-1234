@@ -1,7 +1,24 @@
-import React, { useState } from 'react';
-import { X, ArrowDownRight, ArrowUpRight, Copy, Check, ShieldCheck, AlertCircle, Sparkles, QrCode, Landmark, Banknote, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  X,
+  ArrowDownRight,
+  ArrowUpRight,
+  Copy,
+  Check,
+  ShieldCheck,
+  AlertCircle,
+  Sparkles,
+  QrCode,
+  Landmark,
+  Banknote,
+  ExternalLink,
+  Loader2,
+  Clock,
+  Send,
+} from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Transaction } from '../../types';
+import { SavedBankDetail, SavedWalletAddress, Transaction } from '../../types';
+import { flutterwaveInitialize, flutterwaveVerify, cryptoCreateInvoice, createWithdrawalRequest } from '../../lib/api';
 
 interface DepositWithdrawModalProps {
   isOpen: boolean;
@@ -11,22 +28,31 @@ interface DepositWithdrawModalProps {
   nairaBalance: number;
   xenaNgnRate: number;
   xenaUsdPrice: number;
+  limits?: { min_deposit_ngn?: number; min_withdrawal_ngn?: number };
+  email?: string;
+  savedBankDetails?: SavedBankDetail[];
+  savedWallets?: SavedWalletAddress[];
   onSuccess: (amountChange: number, newTx: Transaction) => void;
 }
 
-const NGN_BANKS = ['GTBank', 'Zenith Bank', 'Access Bank', 'UBA', 'First Bank', 'Providus Bank', 'Kuda', 'OPay', 'Moniepoint'];
-const ESCROW_BANK = {
-  bank: 'Providus Bank',
-  accountName: 'XENA Nigeria Escrow Ltd',
-  accountNumber: '30-8821-4490',
-  sortCode: '101',
-};
-const NGN_TRANSFER_FEE = 500;
-const CRYPTO_ASSETS: Record<'usdt' | 'btc' | 'sol', { label: string; network: string; address: string; usdRate: number }> = {
-  usdt: { label: 'USDT', network: 'TRC20 (Tron)', address: 'TQm9eV6nY1X4r2T8WkB3dH9pJ5sL7vNc2uQ', usdRate: 1 },
-  btc: { label: 'BTC', network: 'Bitcoin', address: 'bc1q5lz3xt7k9r2m4v8n6p0w2y3s4d5f6a7h8j9k1m', usdRate: 65000 },
-  sol: { label: 'SOL', network: 'Solana', address: '7GkdV2hY1x4R6t8Qm3Wb9pL5sD7fK2nC4a6B8vT0zE', usdRate: 150 },
-};
+const NGN_BANKS = [
+  'GTBank',
+  'Zenith Bank',
+  'Access Bank',
+  'UBA',
+  'First Bank',
+  'Providus Bank',
+  'Kuda',
+  'OPay',
+  'Moniepoint',
+];
+
+const CRYPTO_COINS = [
+  { id: 'usdt', label: 'USDT', network: 'TRC20', icon: '₮' },
+  { id: 'btc', label: 'BTC', network: 'Bitcoin', icon: '₿' },
+  { id: 'sol', label: 'SOL', network: 'Solana', icon: '◎' },
+  { id: 'eth', label: 'ETH', network: 'Ethereum', icon: 'Ξ' },
+] as const;
 
 export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
   isOpen,
@@ -36,28 +62,74 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
   nairaBalance,
   xenaNgnRate,
   xenaUsdPrice,
+  limits,
+  email,
+  savedBankDetails,
+  savedWallets,
   onSuccess,
 }) => {
   const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw'>(initialTab);
-  const [depositMethod, setDepositMethod] = useState<'ngn' | 'usdt' | 'btc' | 'sol'>('ngn');
-  const [withdrawMethod, setWithdrawMethod] = useState<'ngn' | 'xena' | 'usdt' | 'btc' | 'sol'>('ngn');
-  const [amount, setAmount] = useState<string>('500');
-  const [ngnAmount, setNgnAmount] = useState<string>('200000');
-  const [withdrawAddress, setWithdrawAddress] = useState<string>('0x71C...84B29A');
+  const [depositMethod, setDepositMethod] = useState<'ngn' | 'usdt' | 'btc' | 'sol' | 'eth'>('ngn');
+  const [ngnAmount, setNgnAmount] = useState<string>('50000');
+  const [cryptoAmount, setCryptoAmount] = useState<string>('50');
+
   const [ngnBank, setNgnBank] = useState('GTBank');
-  const [ngnAccountNumber, setNgnAccountNumber] = useState('0123456789');
-  const [ngnAccountName, setNgnAccountName] = useState('Alex Morgan');
-  const [escrowRef, setEscrowRef] = useState<string>(() => `XEN-${Math.random().toString(36).slice(2, 8).toUpperCase()}`);
+  const [ngnAccountNumber, setNgnAccountNumber] = useState('');
+  const [ngnAccountName, setNgnAccountName] = useState('');
+
+  const [withdrawMethod, setWithdrawMethod] = useState<'ngn' | 'crypto'>('ngn');
+  const [withdrawCoin, setWithdrawCoin] = useState<string>('usdt');
+  const [withdrawAddress, setWithdrawAddress] = useState('');
+  const [withdrawAmount, setWithdrawAmount] = useState<string>('50');
+
   const [copied, setCopied] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [invoice, setInvoice] = useState<any>(null);
+  const [waitingPayment, setWaitingPayment] = useState(false);
+  const [txRef, setTxRef] = useState<string>('');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  if (!isOpen) return null;
+  // Prefill withdrawal destination from details saved in Settings.
+  useEffect(() => {
+    if (savedBankDetails && savedBankDetails.length > 0 && !ngnAccountNumber) {
+      const b = savedBankDetails[0];
+      setNgnBank(b.bankName || 'GTBank');
+      setNgnAccountNumber(b.accountNumber || '');
+      setNgnAccountName(b.accountName || '');
+    }
+  }, [savedBankDetails]);
+
+  const lastAutoCoin = useRef<string | null>(null);
+  useEffect(() => {
+    if (!savedWallets || savedWallets.length === 0) return;
+    if (!withdrawAddress && lastAutoCoin.current === null) {
+      const w = savedWallets[0];
+      setWithdrawAddress(w.address);
+      setWithdrawCoin((w.coin as any) || 'usdt');
+      lastAutoCoin.current = w.coin;
+    }
+  }, [savedWallets]);
+
+  useEffect(() => {
+    if (!savedWallets) return;
+    const match = savedWallets.find((w) => w.coin === withdrawCoin);
+    if (match && lastAutoCoin.current !== withdrawCoin && !withdrawAddress) {
+      setWithdrawAddress(match.address);
+      lastAutoCoin.current = withdrawCoin;
+    }
+  }, [withdrawCoin, savedWallets]);
 
   const rate = Math.max(0.0001, xenaNgnRate);
-  const xenaFromNgn = (ngn: number) => Math.round((ngn / rate) * 10000) / 10000;
+  const minDeposit = limits?.min_deposit_ngn ?? 3000;
+  const minWithdrawal = limits?.min_withdrawal_ngn ?? 3000;
+
+  const xenaFromNgn = (n: number) => Math.round((n / rate) * 10000) / 10000;
   const fmtNgn = (n: number) => `₦${Math.round(n).toLocaleString('en-US')}`;
   const ngnFromXena = (x: number) => Math.round(x * rate);
+
+  if (!isOpen) return null;
 
   const handleCopy = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
@@ -65,132 +137,145 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const regenerateRef = () => setEscrowRef(`XEN-${Math.random().toString(36).slice(2, 8).toUpperCase()}`);
-
-  const handleDepositSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    let xena = 0;
-    let payMethod = '';
-    let headline = '';
-    let details = '';
-
-    if (depositMethod === 'ngn') {
-      const ngn = parseFloat(ngnAmount);
-      if (isNaN(ngn) || ngn <= 0) return;
-      xena = xenaFromNgn(ngn);
-      payMethod = 'NGN Bank Deposit · Nigerian Escrow';
-      headline = `${fmtNgn(ngn)} Escrow Deposit Confirmed`;
-      details = `+${xena.toLocaleString()} XENA credited after escrow verification of reference ${escrowRef}.`;
-    } else {
-      const num = parseFloat(amount);
-      if (isNaN(num) || num <= 0) return;
-      const asset = CRYPTO_ASSETS[depositMethod as 'usdt' | 'btc' | 'sol'];
-      const xenaUsd = Math.max(0.0001, xenaUsdPrice);
-      xena = (num * asset.usdRate) / xenaUsd;
-      payMethod = `${asset.label} Deposit (${asset.network})`;
-      headline = `Successfully deposited +${xena.toLocaleString()} XENA to your account!`;
-      details = `${num} ${asset.label} was received and converted to XENA at the live market rate.`;
-    }
-
-    setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
-      try {
-        confetti({ particleCount: 80, spread: 65, origin: { y: 0.6 } });
-      } catch {}
-
-      const newTx: Transaction = {
-        id: `tx-${Date.now().toString().slice(-4)}`,
-        title: depositMethod === 'ngn' ? 'Naira Deposit (Escrow)' : 'Deposit',
-        type: 'deposit',
-        amount: xena,
-        unit: 'XENA',
-        status: 'Completed',
-        timestamp: 'Just now',
-        txHash: `0x${Math.random().toString(16).slice(2, 10)}...${Math.random().toString(16).slice(2, 6)}`,
-        paymentMethod: payMethod,
-        fee: 0.00,
-      };
-
-      onSuccess(xena, newTx);
-      setSuccessMessage(`${headline} ${details}`);
-      setTimeout(() => {
-        setSuccessMessage(null);
-        onClose();
-      }, 1800);
-    }, 800);
+  const resetState = () => {
+    setError(null);
+    setInvoice(null);
+    setWaitingPayment(false);
+    setTxRef('');
+    setSuccessMessage(null);
+    setIsSubmitting(false);
   };
 
-  const handleWithdrawSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    let xena = 0;
-    let payMethod = '';
-    let cparty = '';
-    let fee = 0;
-    let headline = '';
+  const handleClose = () => {
+    resetState();
+    onClose();
+  };
 
-    if (withdrawMethod === 'ngn') {
-      const ngn = parseFloat(ngnAmount);
-      if (isNaN(ngn) || ngn <= 0) return;
-      xena = xenaFromNgn(ngn);
-      if (xena > availableXena) return;
-      fee = NGN_TRANSFER_FEE;
-      payMethod = 'NGN Bank Transfer (Escrow-Protected)';
-      cparty = `${ngnBank} • ${ngnAccountName} • ${ngnAccountNumber.slice(-4)}`;
-      headline = `${fmtNgn(ngn - NGN_TRANSFER_FEE)} sent to ${ngnBank} (${ngnAccountNumber.slice(-4)})`;
-    } else {
-      const num = parseFloat(amount);
-      if (isNaN(num) || num <= 0 || num > availableXena) return;
-      xena = num;
-      const label = withdrawMethod === 'xena' ? 'XENA' : CRYPTO_ASSETS[withdrawMethod as 'usdt' | 'btc' | 'sol'].label;
-      payMethod = `${label} Network Transfer`;
-      cparty = withdrawAddress;
-      fee = 1.50;
-      headline = `Withdrawal request of ${xena.toLocaleString()} XENA (≈ ${label}) submitted securely.`;
-    }
+  const showSuccess = (msg: string) => {
+    try { confetti({ particleCount: 80, spread: 65, origin: { y: 0.6 } }); } catch {}
+    setSuccessMessage(msg);
+    setTimeout(() => { setSuccessMessage(null); handleClose(); }, 2500);
+  };
+
+  // ──────────── NGN DEPOSIT (Flutterwave) ────────────
+  const handleNgnDeposit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const ngn = parseFloat(ngnAmount);
+    if (isNaN(ngn) || ngn <= 0) { setError('Enter a valid amount.'); return; }
+    if (ngn < minDeposit) { setError(`Minimum deposit is ${fmtNgn(minDeposit)}.`); return; }
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
-      try {
-        confetti({ particleCount: 60, spread: 60, origin: { y: 0.6 } });
-      } catch {}
+    setError(null);
+    const res = await flutterwaveInitialize(ngn);
+    setIsSubmitting(false);
 
-      const newTx: Transaction = {
-        id: `tx-${Date.now().toString().slice(-4)}`,
-        title: withdrawMethod === 'ngn' ? 'Naira Withdrawal' : 'Withdrawal',
-        type: 'withdrawal',
-        amount: -xena,
-        unit: 'XENA',
-        status: 'Pending',
-        timestamp: 'Just now',
-        txHash: `0x${Math.random().toString(16).slice(2, 10)}...${Math.random().toString(16).slice(2, 6)}`,
-        counterparty: cparty,
-        paymentMethod: payMethod,
-        fee,
-      };
+    if (!res.ok || !res.paymentLink) { setError(res.error || 'Unable to start payment.'); return; }
 
-      onSuccess(-xena, newTx);
-      setSuccessMessage(`${headline} Your payout is escrow-verified.`);
-      setTimeout(() => {
-        setSuccessMessage(null);
-        onClose();
-      }, 1800);
-    }, 900);
+    setTxRef(res.txRef || res.reference || '');
+    setWaitingPayment(true);
+    window.open(res.paymentLink, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleVerifyFlutterwave = async () => {
+    if (!txRef) { setError('No transaction reference.'); return; }
+    setIsSubmitting(true);
+    setError(null);
+    const res = await flutterwaveVerify(txRef);
+    setIsSubmitting(false);
+
+    if (!res.ok) { setError(res.error || 'Payment not confirmed yet. If you paid, try again in a few seconds.'); return; }
+
+    const xena = res.xena || 0;
+    const ngn = parseFloat(ngnAmount) || 0;
+    const newTx: Transaction = {
+      id: `tx-${Date.now().toString().slice(-4)}`,
+      title: 'Naira Deposit (Flutterwave)',
+      type: 'deposit',
+      amount: xena,
+      unit: 'XENA',
+      status: 'Completed',
+      timestamp: 'Just now',
+      txHash: txRef,
+      paymentMethod: 'Flutterwave · NGN',
+      fee: 0,
+    };
+    onSuccess(xena, newTx);
+    showSuccess(`+${xena.toLocaleString()} XENA deposited from ${fmtNgn(ngn)}!`);
+  };
+
+  // ──────────── CRYPTO DEPOSIT (NOWPayments) ────────────
+  const handleCryptoDeposit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const usd = parseFloat(cryptoAmount);
+    if (isNaN(usd) || usd <= 0) { setError('Enter a valid USD amount.'); return; }
+    if (usd < 10) { setError('Minimum crypto deposit is $10.'); return; }
+
+    setIsSubmitting(true);
+    setError(null);
+    const res = await cryptoCreateInvoice(depositMethod, usd);
+    setIsSubmitting(false);
+
+    if (!res.ok || !res.invoice) { setError(res.error || 'Unable to create invoice.'); return; }
+    setInvoice(res.invoice);
+  };
+
+  // ──────────── NGN WITHDRAWAL ────────────
+  const handleNgnWithdraw = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const ngn = parseFloat(ngnAmount);
+    const xena = xenaFromNgn(ngn);
+    if (isNaN(ngn) || ngn <= 0) { setError('Enter a valid amount.'); return; }
+    if (ngn < minWithdrawal) { setError(`Minimum withdrawal is ${fmtNgn(minWithdrawal)}.`); return; }
+    if (xena > availableXena) { setError(`Insufficient balance. You have ${availableXena.toFixed(2)} XENA.`); return; }
+    if (!ngnAccountNumber || !ngnAccountName) { setError('Fill in your bank details.'); return; }
+
+    setIsSubmitting(true);
+    setError(null);
+    const res = await createWithdrawalRequest({
+      method: 'ngn',
+      amount_xena: xena,
+      amount_ngn: ngn,
+      bank: ngnBank,
+      account_number: ngnAccountNumber,
+      account_name: ngnAccountName,
+    });
+    setIsSubmitting(false);
+
+    if (!res.ok) { setError(res.error || 'Unable to submit withdrawal.'); return; }
+    showSuccess(`Withdrawal of ${fmtNgn(ngn)} (${xena.toFixed(2)} XENA) submitted — pending admin approval.`);
+  };
+
+  // ──────────── CRYPTO WITHDRAWAL (manual) ────────────
+  const handleCryptoWithdraw = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const xena = parseFloat(withdrawAmount);
+    if (isNaN(xena) || xena <= 0) { setError('Enter a valid amount.'); return; }
+    if (xena < 1) { setError('Minimum crypto withdrawal is 1 XENA.'); return; }
+    if (xena > availableXena) { setError(`Insufficient balance. You have ${availableXena.toFixed(2)} XENA.`); return; }
+    if (!withdrawAddress) { setError('Enter a destination address.'); return; }
+
+    setIsSubmitting(true);
+    setError(null);
+    const res = await createWithdrawalRequest({
+      method: withdrawCoin,
+      amount_xena: xena,
+      address: withdrawAddress,
+    });
+    setIsSubmitting(false);
+
+    if (!res.ok) { setError(res.error || 'Unable to submit withdrawal.'); return; }
+    showSuccess(`Withdrawal of ${xena.toFixed(2)} XENA (${withdrawCoin.toUpperCase()}) submitted — pending admin approval.`);
   };
 
   const ngnDeposit = Math.max(0, parseFloat(ngnAmount) || 0);
-  const ngnWithdraw = Math.max(0, parseFloat(ngnAmount) || 0);
   const availableNgn = ngnFromXena(availableXena);
-  const ngnPayout = Math.max(0, ngnWithdraw - NGN_TRANSFER_FEE);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in" id="deposit-withdraw-modal">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
       <div className="relative w-full max-w-lg bg-white rounded-t-[28px] sm:rounded-2xl shadow-2xl border border-[#EDE9FE] overflow-hidden max-h-[92vh] flex flex-col">
-        {/* Mobile drag handle bar */}
         <div className="w-12 h-1 bg-slate-200 rounded-full mx-auto sm:hidden mt-3 mb-1 shrink-0" />
 
-        {/* Header bar */}
+        {/* Header */}
         <div className="flex items-center justify-between px-5 sm:px-6 py-3.5 sm:py-4 border-b border-[#EDE9FE] bg-[#F8F7FC] shrink-0">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#7C3AED] to-[#A855F7] flex items-center justify-center text-white">
@@ -200,46 +285,32 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
               <h3 className="font-bold text-[#171717] text-base sm:text-lg leading-tight">
                 {activeTab === 'deposit' ? 'Deposit Funds' : 'Withdraw Funds'}
               </h3>
-              <p className="text-[10px] text-[#6B7280]">{activeTab === 'deposit' ? 'Naira escrow & crypto deposits' : 'Withdraw in NGN or XENA'}</p>
+              <p className="text-[10px] text-[#6B7280]">
+                {activeTab === 'deposit' ? 'Flutterwave (NGN) & Crypto' : 'Bank transfer or crypto wallet'}
+              </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg text-[#6B7280] hover:text-[#171717] hover:bg-white transition-colors cursor-pointer"
-            aria-label="Close"
-          >
+          <button onClick={handleClose} className="p-2 rounded-lg text-[#6B7280] hover:text-[#171717] hover:bg-white transition-colors cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Tab switchers */}
+        {/* Tabs */}
         <div className="flex border-b border-[#EDE9FE] p-1.5 bg-[#F8F7FC]/70 mx-4 sm:mx-6 mt-3 sm:mt-4 rounded-xl shrink-0">
-          <button
-            type="button"
-            onClick={() => setActiveTab('deposit')}
-            className={`flex-1 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all min-h-[38px] ${
-              activeTab === 'deposit'
-                ? 'bg-white text-[#6D28D9] shadow-sm font-bold'
-                : 'text-[#6B7280] hover:text-[#171717]'
-            }`}
-          >
-            Deposit Funds
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('withdraw')}
-            className={`flex-1 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all min-h-[38px] ${
-              activeTab === 'withdraw'
-                ? 'bg-white text-[#6D28D9] shadow-sm font-bold'
-                : 'text-[#6B7280] hover:text-[#171717]'
-            }`}
-          >
-            Withdraw Funds
-          </button>
+          {(['deposit', 'withdraw'] as const).map((t) => (
+            <button key={t} type="button" onClick={() => { setActiveTab(t); resetState(); }}
+              className={`flex-1 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all min-h-[38px] ${
+                activeTab === t ? 'bg-white text-[#6D28D9] shadow-sm font-bold' : 'text-[#6B7280] hover:text-[#171717]'
+              }`}>
+              {t === 'deposit' ? 'Deposit Funds' : 'Withdraw Funds'}
+            </button>
+          ))}
         </div>
 
-        {/* Modal content */}
+        {/* Body */}
         <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+
+          {/* ── Success screen ── */}
           {successMessage ? (
             <div className="py-8 text-center space-y-3">
               <div className="w-14 h-14 mx-auto rounded-full bg-emerald-50 text-[#16A34A] flex items-center justify-center border border-emerald-200">
@@ -248,29 +319,26 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
               <h4 className="text-lg font-bold text-[#171717]">Transaction Processed</h4>
               <p className="text-sm text-[#6B7280] max-w-xs mx-auto">{successMessage}</p>
             </div>
+
+          /* ── Deposit tab ── */
           ) : activeTab === 'deposit' ? (
-            <form onSubmit={handleDepositSubmit} className="space-y-4">
+
+            <div className="space-y-4">
+
+              {/* Method selector */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-[#6B7280] mb-2">
-                  Select Deposit Method
-                </label>
-                <div className="grid grid-cols-2 gap-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-[#6B7280] mb-2">Deposit Method</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
-                    { id: 'ngn', label: '₦ Naira (Escrow)', desc: '0% fee · Instant' },
-                    { id: 'usdt', label: 'USDT', desc: 'TRC20 · Instant' },
-                    { id: 'btc', label: 'BTC', desc: 'Bitcoin · Instant' },
-                    { id: 'sol', label: 'Solana', desc: 'SOL · Instant' },
+                    { id: 'ngn', label: '₦ Naira', desc: 'Flutterwave · 0% fee' },
+                    ...CRYPTO_COINS.map((c) => ({ id: c.id, label: `${c.icon} ${c.label}`, desc: c.network })),
                   ].map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setDepositMethod(m.id as any)}
+                    <button key={m.id} type="button" onClick={() => { setDepositMethod(m.id as any); resetState(); }}
                       className={`p-2.5 text-left rounded-xl border text-xs transition-all ${
                         depositMethod === m.id
                           ? 'border-[#7C3AED] bg-purple-50/50 text-[#6D28D9] ring-1 ring-[#7C3AED]'
                           : 'border-[#EDE9FE] bg-white text-[#6B7280] hover:border-purple-200'
-                      }`}
-                    >
+                      }`}>
                       <span className="font-bold block text-[#171717]">{m.label}</span>
                       <span className="text-[10px] text-[#6B7280]">{m.desc}</span>
                     </button>
@@ -278,187 +346,185 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
                 </div>
               </div>
 
-              {depositMethod === 'ngn' && (
-                <>
+              {/* ── NGN via Flutterwave ── */}
+              {depositMethod === 'ngn' && !waitingPayment && (
+                <form onSubmit={handleNgnDeposit} className="space-y-3">
                   <div className="p-3.5 rounded-xl bg-gradient-to-br from-[#7C3AED] to-[#A855F7] text-white border border-purple-200 space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-white/15 border border-white/25 flex items-center justify-center">
-                          <Landmark className="w-4 h-4" />
-                        </div>
+                        <Landmark className="w-5 h-5" />
                         <div>
-                          <p className="text-xs font-extrabold">Nigerian Escrow Vault</p>
-                          <p className="text-[9px] text-purple-100">CBN-licensed custody · escrow-protected</p>
+                          <p className="text-xs font-extrabold">Flutterwave Checkout</p>
+                          <p className="text-[9px] text-purple-100">Card · Bank Transfer · USSD · Mobile Money</p>
                         </div>
                       </div>
                       <span className="px-2 py-0.5 rounded-full bg-white/15 border border-white/25 text-[9px] font-bold flex items-center gap-1">
-                        <ShieldCheck className="w-3 h-3 text-emerald-300" /> 100% Protected
+                        <ShieldCheck className="w-3 h-3 text-emerald-300" /> Secured
                       </span>
                     </div>
-                    <div className="grid grid-cols-1 gap-1.5 text-[11px]">
-                      <div className="flex items-center justify-between bg-white/10 rounded-lg px-2.5 py-1.5 border border-white/10">
-                        <span className="text-purple-100">Bank</span>
-                        <span className="font-bold flex items-center gap-1.5">
-                          {ESCROW_BANK.bank}
-                          <button type="button" onClick={() => handleCopy(ESCROW_BANK.bank, 'bank')} className="text-white hover:text-black cursor-pointer">
-                            {copied === 'bank' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                          </button>
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between bg-white/10 rounded-lg px-2.5 py-1.5 border border-white/10">
-                        <span className="text-purple-100">Account Name</span>
-                        <span className="font-bold">{ESCROW_BANK.accountName}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-2 bg-white/10 rounded-lg px-2.5 py-1.5 border border-white/10">
-                        <span className="text-purple-100">Account No.</span>
-                        <span className="font-bold font-mono flex items-center gap-1.5">
-                          {ESCROW_BANK.accountNumber}
-                          <button type="button" onClick={() => handleCopy(ESCROW_BANK.accountNumber, 'acct')} className="text-white hover:text-black cursor-pointer">
-                            {copied === 'acct' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                          </button>
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between gap-2 bg-white/10 rounded-lg px-2.5 py-1.5 border border-white/10">
-                        <span className="text-purple-100">Your Reference</span>
-                        <span className="font-bold font-mono text-[10px] flex items-center gap-1.5">
-                          {escrowRef}
-                          <button type="button" onClick={() => handleCopy(escrowRef, 'ref')} className="text-white hover:text-black cursor-pointer">
-                            {copied === 'ref' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                          </button>
-                          <button type="button" onClick={regenerateRef} className="text-white hover:text-black cursor-pointer" title="New reference">
-                            <RefreshCw className="w-3 h-3" />
-                          </button>
-                        </span>
-                      </div>
-                    </div>
                     <p className="text-[9px] text-purple-100 leading-relaxed">
-                      Send from your verified Nigerian bank account and include the reference. XENA is credited within seconds once escrow confirms your transfer.
+                      You'll be redirected to Flutterwave's secure checkout. Choose from multiple payment methods — card, bank transfer, USSD, or mobile money.
                     </p>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">
-                      Amount to Deposit (₦ Naira)
-                    </label>
+                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">Amount (₦ Naira)</label>
                     <div className="relative">
                       <Banknote className="w-4 h-4 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="number"
-                        value={ngnAmount}
-                        onChange={(e) => setNgnAmount(e.target.value)}
-                        min="100"
-                        step="any"
-                        required
+                      <input type="number" value={ngnAmount} onChange={(e) => setNgnAmount(e.target.value)}
+                        min={minDeposit} step="any" required
                         className="w-full px-4 pl-9 py-2.5 text-base font-semibold text-[#171717] bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl focus:outline-none focus:border-[#7C3AED] focus:bg-white transition-all pr-16"
-                        placeholder="0.00"
-                      />
-                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 font-bold text-xs text-[#6D28D9]">
-                        ₦
-                      </span>
+                        placeholder="0.00" />
+                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 font-bold text-xs text-[#6D28D9]">₦</span>
                     </div>
                     <div className="flex items-center justify-between text-xs mt-1.5">
-                      <span className="text-[#6B7280]">Escrow rate</span>
-                      <span className="font-semibold text-[#6D28D9]">1 XENA ≈ ₦{rate.toLocaleString()}</span>
+                      <span className="text-[#6B7280]">Min: {fmtNgn(minDeposit)}</span>
+                      <span className="font-semibold text-[#6D28D9]">1 XENA ≈ {fmtNgn(rate)}</span>
                     </div>
                     <div className="flex items-center justify-between text-xs font-bold text-[#171717] bg-emerald-50 border border-emerald-100 rounded-lg p-2 mt-1.5">
                       <span>You receive</span>
                       <span className="text-emerald-600">{ngnDeposit > 0 ? `+${xenaFromNgn(ngnDeposit).toLocaleString()} XENA` : '— XENA'}</span>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between text-xs text-[#6B7280] pt-1">
-                    <span>Escrow Service Fee</span>
-                    <span className="font-semibold text-emerald-600">0.00 XENA (0% · Zero Fee)</span>
-                  </div>
 
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-[#7C3AED] to-[#A855F7] hover:shadow-[0_4px_16px_rgba(109,40,217,0.3)] hover:scale-[1.01] transition-all disabled:opacity-50"
-                  >
-                    {isSubmitting ? 'Confirming Escrow Deposit...' : `Deposit ${fmtNgn(ngnDeposit) || '₦0'} via Escrow → +${xenaFromNgn(ngnDeposit).toLocaleString()} XENA`}
+                  {error && (
+                    <div className="flex items-center gap-2 text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-lg p-2.5">
+                      <AlertCircle className="w-4 h-4 shrink-0" /><span>{error}</span>
+                    </div>
+                  )}
+
+                  <button type="submit" disabled={isSubmitting || ngnDeposit < minDeposit}
+                    className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-[#7C3AED] to-[#A855F7] hover:shadow-[0_4px_16px_rgba(109,40,217,0.3)] hover:scale-[1.01] transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                    {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Initializing...</> : <>Pay {fmtNgn(ngnDeposit)} via Flutterwave</>}
                   </button>
-                </>
+                </form>
               )}
 
-              {(depositMethod === 'usdt' || depositMethod === 'btc' || depositMethod === 'sol') && (() => {
-                const asset = CRYPTO_ASSETS[depositMethod];
-                return (
-                  <>
-                    <div className="p-4 rounded-xl bg-[#F8F7FC] border border-[#EDE9FE] space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-[#6B7280]">Your Deposit Address ({asset.network})</span>
-                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                          Active
-                        </span>
-                      </div>
+              {/* ── Waiting for Flutterwave payment ── */}
+              {depositMethod === 'ngn' && waitingPayment && (
+                <div className="space-y-3">
+                  <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 space-y-2">
+                    <div className="flex items-center gap-2 text-amber-700">
+                      <Clock className="w-5 h-5 animate-pulse" />
+                      <span className="text-sm font-bold">Waiting for payment...</span>
+                    </div>
+                    <p className="text-xs text-amber-600">Flutterwave checkout opened in a new tab. Complete the payment there, then come back and click verify.</p>
+                    <p className="text-[10px] text-amber-500 font-mono">Ref: {txRef}</p>
+                  </div>
+
+                  {error && (
+                    <div className="flex items-center gap-2 text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-lg p-2.5">
+                      <AlertCircle className="w-4 h-4 shrink-0" /><span>{error}</span>
+                    </div>
+                  )}
+
+                  <button onClick={handleVerifyFlutterwave} disabled={isSubmitting}
+                    className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-[#16A34A] to-[#22C55E] hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                    {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying...</> : <><Check className="w-4 h-4" /> I've Paid — Verify</>}
+                  </button>
+
+                  <button onClick={() => { setWaitingPayment(false); setTxRef(''); resetState(); }} className="w-full py-2 text-xs font-bold text-[#6B7280] hover:text-[#171717] transition-colors">Cancel</button>
+                </div>
+              )}
+
+              {/* ── Crypto via NOWPayments ── */}
+              {depositMethod !== 'ngn' && !invoice && (
+                <form onSubmit={handleCryptoDeposit} className="space-y-3">
+                  <div className="p-3.5 rounded-xl bg-[#F8F7FC] border border-[#EDE9FE] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-[#6B7280]">NOWPayments Invoice</span>
+                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">Auto-credited</span>
+                    </div>
+                    <p className="text-[10px] text-[#6B7280]">
+                      Send exactly the amount shown to the generated address. Your XENA balance is credited automatically once confirmed on-chain (usually 1-3 confirmations).
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">Deposit Amount (USD)</label>
+                    <div className="relative">
+                      <input type="number" value={cryptoAmount} onChange={(e) => setCryptoAmount(e.target.value)}
+                        min="10" step="any" required
+                        className="w-full px-4 py-2.5 text-base font-semibold text-[#171717] bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl focus:outline-none focus:border-[#7C3AED] focus:bg-white transition-all pr-16"
+                        placeholder="0.00" />
+                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 font-bold text-xs text-[#6D28D9]">USD</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs mt-1.5">
+                      <span className="text-[#6B7280]">Min: $10 · Coin: {CRYPTO_COINS.find((c) => c.id === depositMethod)?.label}</span>
+                      <span className="font-semibold text-[#6D28D9]">≈ {((parseFloat(cryptoAmount) || 0) / Math.max(0.0001, xenaUsdPrice)).toFixed(2)} XENA</span>
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div className="flex items-center gap-2 text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-lg p-2.5">
+                      <AlertCircle className="w-4 h-4 shrink-0" /><span>{error}</span>
+                    </div>
+                  )}
+
+                  <button type="submit" disabled={isSubmitting}
+                    className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-[#7C3AED] to-[#A855F7] hover:shadow-[0_4px_16px_rgba(109,40,217,0.3)] hover:scale-[1.01] transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                    {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating Invoice...</> : 'Generate Invoice'}
+                  </button>
+                </form>
+              )}
+
+              {/* ── Crypto invoice details ── */}
+              {depositMethod !== 'ngn' && invoice && (
+                <div className="space-y-3">
+                  <div className="p-4 rounded-xl bg-[#F8F7FC] border border-[#EDE9FE] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#171717]">Pay {invoice.pay_currency?.toUpperCase()} to this address</span>
+                      <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">
+                        {invoice.status || 'waiting'}
+                      </span>
+                    </div>
+
+                    {invoice.pay_address && (
                       <div className="flex items-center gap-2">
                         <div className="p-2 bg-white rounded-lg border border-[#EDE9FE] text-[#6D28D9]">
                           <QrCode className="w-5 h-5" />
                         </div>
-                        <code className="flex-1 text-xs font-mono text-[#171717] bg-white p-2 rounded-lg border border-[#EDE9FE] truncate select-all">
-                          {asset.address}
+                        <code className="flex-1 text-xs font-mono text-[#171717] bg-white p-2 rounded-lg border border-[#EDE9FE] break-all select-all">
+                          {invoice.pay_address}
                         </code>
-                        <button
-                          type="button"
-                          onClick={() => handleCopy(asset.address, 'addr')}
-                          className="px-3 py-2 bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white text-xs font-medium rounded-lg hover:opacity-90 flex items-center gap-1 shadow-sm"
-                        >
+                        <button type="button" onClick={() => handleCopy(invoice.pay_address, 'addr')}
+                          className="px-3 py-2 bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white text-xs font-medium rounded-lg hover:opacity-90 flex items-center gap-1 shadow-sm">
                           {copied === 'addr' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                           {copied === 'addr' ? 'Copied' : 'Copy'}
                         </button>
                       </div>
-                      <p className="text-[10px] text-[#6B7280]">
-                        Deposit {asset.label} ({asset.network}). It is automatically converted to XENA at the live market rate.
-                      </p>
-                    </div>
+                    )}
 
-                    <div>
-                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">
-                        Amount to Deposit ({asset.label})
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          value={amount}
-                          onChange={(e) => setAmount(e.target.value)}
-                          min="0"
-                          step="any"
-                          required
-                          className="w-full px-4 py-2.5 text-base font-semibold text-[#171717] bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl focus:outline-none focus:border-[#7C3AED] focus:bg-white transition-all pr-16"
-                          placeholder="0.00"
-                        />
-                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 font-bold text-xs text-[#6D28D9]">
-                          {asset.label}
-                        </span>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-white rounded-lg p-2 border border-[#EDE9FE]">
+                        <span className="text-[10px] text-[#6B7280] block">Send exactly</span>
+                        <span className="font-bold text-[#171717] font-mono">{invoice.pay_amount} {invoice.pay_currency?.toUpperCase()}</span>
+                      </div>
+                      <div className="bg-white rounded-lg p-2 border border-[#EDE9FE]">
+                        <span className="text-[10px] text-[#6B7280] block">You receive</span>
+                        <span className="font-bold text-[#6D28D9] font-mono">≈ {((invoice.pay_amount || 0) / Math.max(0.0001, xenaUsdPrice)).toFixed(2)} XENA</span>
                       </div>
                     </div>
+                  </div>
 
-                    <div className="flex items-center justify-between text-xs text-[#6B7280] bg-purple-50/50 border border-purple-100 rounded-lg p-2">
-                      <span>You receive (auto-converted)</span>
-                      <span className="font-bold text-[#6D28D9]">
-                        {(() => { const n = parseFloat(amount) || 0; const usd = Math.max(0.0001, xenaUsdPrice); return `≈ ${((n * asset.usdRate) / usd).toLocaleString()} XENA`; })()}
-                      </span>
-                    </div>
+                  <div className="flex items-center gap-2 text-xs text-[#6B7280]">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Credited automatically via IPN webhook. Usually takes 1-3 confirmations.</span>
+                  </div>
 
-                    <div className="flex items-center justify-between text-xs text-[#6B7280] pt-1">
-                      <span>Conversion Fee</span>
-                      <span className="font-semibold text-emerald-600">0% · Zero Fee</span>
-                    </div>
+                  <button onClick={() => { showSuccess(`Invoice created — send ${invoice.pay_amount} ${invoice.pay_currency?.toUpperCase()} to the address shown.`); }}
+                    className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-[#16A34A] to-[#22C55E] hover:shadow-lg transition-all flex items-center justify-center gap-2">
+                    <Check className="w-4 h-4" /> Done — Track in Activity
+                  </button>
+                </div>
+              )}
+            </div>
 
-                    <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-[#7C3AED] to-[#A855F7] hover:shadow-[0_4px_16px_rgba(109,40,217,0.3)] hover:scale-[1.01] transition-all disabled:opacity-50"
-                    >
-                      {isSubmitting ? 'Confirming Deposit...' : `Deposit ${amount || 0} ${asset.label} → XENA`}
-                    </button>
-                  </>
-                );
-              })()}
-
-            </form>
+          /* ── Withdraw tab ── */
           ) : (
-            <form onSubmit={handleWithdrawSubmit} className="space-y-4">
+            <div className="space-y-4">
+
+              {/* Balance */}
               <div className="p-3 rounded-xl bg-purple-50/70 border border-purple-100 space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-[#6B7280]">Available for Withdrawal</span>
@@ -468,35 +534,25 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-[#6B7280] border-t border-purple-100 pt-1.5">
-                  <span>Naira Wallet Balance</span>
-                  <span className="font-bold text-[#171717] font-mono">{fmtNgn(nairaBalance)}</span>
+                  <span>Min withdrawal</span>
+                  <span className="font-bold text-[#171717]">{fmtNgn(minWithdrawal)} (≈ {xenaFromNgn(minWithdrawal).toFixed(2)} XENA)</span>
                 </div>
               </div>
 
+              {/* Method selector */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-[#6B7280] mb-2">
-                  Withdraw As
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {(
-                    [
-                      { id: 'ngn', label: '₦ Naira (Bank)', desc: 'To Nigerian account' },
-                      { id: 'usdt', label: 'USDT', desc: 'TRC20' },
-                      { id: 'btc', label: 'BTC', desc: 'Bitcoin' },
-                      { id: 'sol', label: 'Solana', desc: 'SOL' },
-                      { id: 'xena', label: 'XENA (Network)', desc: 'To crypto wallet' },
-                    ] as const
-                  ).map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setWithdrawMethod(m.id)}
+                <label className="block text-xs font-semibold uppercase tracking-wider text-[#6B7280] mb-2">Withdraw As</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'ngn', label: '₦ Naira (Bank)', desc: 'To Nigerian account' },
+                    { id: 'crypto', label: 'Crypto', desc: 'USDT / BTC / SOL / ETH' },
+                  ].map((m) => (
+                    <button key={m.id} type="button" onClick={() => { setWithdrawMethod(m.id as any); setError(null); }}
                       className={`p-2.5 text-left rounded-xl border text-xs transition-all ${
                         withdrawMethod === m.id
                           ? 'border-[#7C3AED] bg-purple-50/50 text-[#6D28D9] ring-1 ring-[#7C3AED]'
                           : 'border-[#EDE9FE] bg-white text-[#6B7280] hover:border-purple-200'
-                      }`}
-                    >
+                      }`}>
                       <span className="font-bold block text-[#171717]">{m.label}</span>
                       <span className="text-[10px] text-[#6B7280]">{m.desc}</span>
                     </button>
@@ -504,43 +560,29 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
                 </div>
               </div>
 
+              {/* ── NGN bank withdrawal ── */}
               {withdrawMethod === 'ngn' && (
-                <>
+              <form onSubmit={handleNgnWithdraw} className="space-y-3">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-xs font-semibold text-[#171717] mb-1.5">Beneficiary Bank</label>
-                      <select
-                        value={ngnBank}
-                        onChange={(e) => setNgnBank(e.target.value)}
-                        className="w-full bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-3 py-2.5 text-xs font-bold text-[#171717] focus:outline-none focus:border-[#7C3AED] cursor-pointer"
-                      >
-                        {NGN_BANKS.map((b) => (
-                          <option key={b}>{b}</option>
-                        ))}
+                      <select value={ngnBank} onChange={(e) => setNgnBank(e.target.value)}
+                        className="w-full bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-3 py-2.5 text-xs font-bold text-[#171717] focus:outline-none focus:border-[#7C3AED] cursor-pointer">
+                        {NGN_BANKS.map((b) => <option key={b}>{b}</option>)}
                       </select>
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-[#171717] mb-1.5">Account Number</label>
-                      <input
-                        type="text"
-                        value={ngnAccountNumber}
-                        onChange={(e) => setNgnAccountNumber(e.target.value.replace(/[^0-9]/g, '').slice(0, 10))}
-                        required
-                        placeholder="0123456789"
-                        className="w-full bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-3 py-2.5 text-xs font-mono font-bold text-[#171717] focus:outline-none focus:border-[#7C3AED] focus:bg-white"
-                      />
+                      <input type="text" value={ngnAccountNumber} onChange={(e) => setNgnAccountNumber(e.target.value.replace(/[^0-9]/g, '').slice(0, 10))}
+                        required placeholder="0123456789"
+                        className="w-full bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-3 py-2.5 text-xs font-mono font-bold text-[#171717] focus:outline-none focus:border-[#7C3AED]" />
                     </div>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-[#171717] mb-1.5">Account Name</label>
-                    <input
-                      type="text"
-                      value={ngnAccountName}
-                      onChange={(e) => setNgnAccountName(e.target.value)}
-                      required
-                      placeholder="Full Name"
-                      className="w-full bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-3 py-2.5 text-xs font-bold text-[#171717] focus:outline-none focus:border-[#7C3AED] focus:bg-white"
-                    />
+                    <input type="text" value={ngnAccountName} onChange={(e) => setNgnAccountName(e.target.value)}
+                      required placeholder="Full Name"
+                      className="w-full bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-3 py-2.5 text-xs font-bold text-[#171717] focus:outline-none focus:border-[#7C3AED]" />
                   </div>
 
                   <div>
@@ -548,12 +590,9 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
                       <label className="text-xs font-semibold text-[#171717]">Withdraw Amount (₦)</label>
                       <div className="flex gap-1.5">
                         {[0.25, 0.5, 0.75, 1].map((pct) => (
-                          <button
-                            key={pct}
-                            type="button"
-                            onClick={() => setNgnAmount(Math.max(100, Math.round(availableNgn * pct)).toString())}
-                            className="px-2 py-0.5 text-[10px] font-bold rounded bg-purple-50 text-[#7C3AED] hover:bg-purple-100 transition-colors"
-                          >
+                          <button key={pct} type="button"
+                            onClick={() => setNgnAmount(Math.max(minWithdrawal, Math.round(availableNgn * pct)).toString())}
+                            className="px-2 py-0.5 text-[10px] font-bold rounded bg-purple-50 text-[#7C3AED] hover:bg-purple-100 transition-colors">
                             {pct === 1 ? 'MAX' : `${pct * 100}%`}
                           </button>
                         ))}
@@ -561,145 +600,124 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
                     </div>
                     <div className="relative">
                       <Banknote className="w-4 h-4 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="number"
-                        value={ngnAmount}
-                        onChange={(e) => setNgnAmount(e.target.value)}
-                        max={availableNgn}
-                        min="100"
-                        step="any"
-                        required
+                      <input type="number" value={ngnAmount} onChange={(e) => setNgnAmount(e.target.value)}
+                        max={availableNgn} min={minWithdrawal} step="any" required
                         className="w-full px-4 pl-9 py-2.5 text-base font-semibold text-[#171717] bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl focus:outline-none focus:border-[#7C3AED] focus:bg-white transition-all pr-16"
-                        placeholder="0.00"
-                      />
-                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 font-bold text-xs text-[#6D28D9]">
-                        ₦
-                      </span>
+                        placeholder="0.00" />
+                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 font-bold text-xs text-[#6D28D9]">₦</span>
                     </div>
                     <div className="flex items-center justify-between text-xs mt-1.5">
                       <span className="text-[#6B7280]">Debits</span>
-                      <span className="font-semibold text-[#6D28D9]">≈ {xenaFromNgn(ngnWithdraw).toLocaleString()} XENA @ ₦{rate.toLocaleString()}</span>
+                      <span className="font-semibold text-[#6D28D9]">≈ {xenaFromNgn(parseFloat(ngnAmount) || 0).toFixed(2)} XENA @ {fmtNgn(rate)}</span>
                     </div>
                   </div>
 
-                  <div className="space-y-1 text-xs text-[#6B7280] bg-[#F8F7FC] p-3 rounded-xl border border-[#EDE9FE]">
-                    <div className="flex justify-between">
-                      <span>NGN Transfer Fee:</span>
-                      <span className="font-medium text-[#171717]">{fmtNgn(NGN_TRANSFER_FEE)}</span>
+                  {error && (
+                    <div className="flex items-center gap-2 text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-lg p-2.5">
+                      <AlertCircle className="w-4 h-4 shrink-0" /><span>{error}</span>
                     </div>
-                    <div className="flex justify-between font-semibold text-[#171717]">
-                      <span>You receive (after fee):</span>
-                      <span className="text-[#6D28D9]">
-                        {fmtNgn(ngnPayout)} <span className="text-[10px] font-bold text-[#6B7280]">≈ {xenaFromNgn(ngnPayout).toLocaleString()} XENA</span>
-                      </span>
-                    </div>
-                  </div>
+                  )}
 
                   <div className="flex items-center gap-2 text-xs text-[#6B7280]">
-                    <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                    <span>Nigerian escrow release: funds settle via NIBSS Instant Transfer on confirmation.</span>
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Admin reviews all withdrawals. Settlement via NIBSS Instant Transfer on approval.</span>
                   </div>
 
-                  <button
-                    type="submit"
-                    disabled={isSubmitting || xenaFromNgn(ngnWithdraw) > availableXena}
-                    className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-[#5B21B6] via-[#7C3AED] to-[#8B5CF6] hover:shadow-[0_4px_16px_rgba(109,40,217,0.3)] hover:scale-[1.01] transition-all disabled:opacity-50"
-                  >
-                    {isSubmitting ? 'Processing Bank Transfer...' : `Withdraw ${fmtNgn(ngnWithdraw) || '₦0'} to ${ngnBank}`}
+                  <button type="submit" disabled={isSubmitting || xenaFromNgn(parseFloat(ngnAmount) || 0) > availableXena}
+                    className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-[#5B21B6] via-[#7C3AED] to-[#8B5CF6] hover:shadow-[0_4px_16px_rgba(109,40,217,0.3)] hover:scale-[1.01] transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                    {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting...</> : <><Send className="w-4 h-4" /> Submit Withdrawal</>}
                   </button>
-                </>
+                </form>
               )}
 
-              {(withdrawMethod === 'xena' || withdrawMethod === 'usdt' || withdrawMethod === 'btc' || withdrawMethod === 'sol') && (() => {
-                const payoutLabel = withdrawMethod === 'xena' ? 'XENA' : CRYPTO_ASSETS[withdrawMethod as 'usdt' | 'btc' | 'sol'].label;
-                const payoutUsdRate = withdrawMethod === 'xena' ? xenaUsdPrice : CRYPTO_ASSETS[withdrawMethod as 'usdt' | 'btc' | 'sol'].usdRate;
-                const payoutAmount = ((Math.max(0, (parseFloat(amount) || 0) - 1.5) * xenaUsdPrice) / payoutUsdRate);
-                return (
-                  <>
-                    <div>
-                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">
-                        Destination {payoutLabel} Address
-                      </label>
-                      <input
-                        type="text"
-                        value={withdrawAddress}
-                        onChange={(e) => setWithdrawAddress(e.target.value)}
-                        required
-                        placeholder={`Enter ${payoutLabel} address`}
-                        className="w-full px-4 py-2.5 text-xs font-mono text-[#171717] bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl focus:outline-none focus:border-[#7C3AED] focus:bg-white"
-                      />
+              {/* ── Crypto withdrawal (manual) ── */}
+              {withdrawMethod === 'crypto' && (
+                <form onSubmit={handleCryptoWithdraw} className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">Coin</label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {CRYPTO_COINS.map((c) => (
+                        <button key={c.id} type="button" onClick={() => setWithdrawCoin(c.id)}
+                          className={`p-2 rounded-xl border text-xs transition-all ${
+                            withdrawCoin === c.id
+                              ? 'border-[#7C3AED] bg-purple-50/50 text-[#6D28D9] ring-1 ring-[#7C3AED]'
+                              : 'border-[#EDE9FE] bg-white text-[#6B7280] hover:border-purple-200'
+                          }`}>
+                          <span className="font-bold block text-[#171717]">{c.icon} {c.label}</span>
+                          <span className="text-[10px] text-[#6B7280]">{c.network}</span>
+                        </button>
+                      ))}
                     </div>
+                  </div>
 
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <label className="text-xs font-semibold text-[#171717]">Withdraw Amount (XENA)</label>
-                        <div className="flex gap-1.5">
-                          {[0.25, 0.5, 0.75, 1].map((pct) => (
-                            <button
-                              key={pct}
-                              type="button"
-                              onClick={() => setAmount((availableXena * pct).toFixed(2))}
-                              className="px-2 py-0.5 text-[10px] font-bold rounded bg-purple-50 text-[#7C3AED] hover:bg-purple-100 transition-colors"
-                            >
-                              {pct === 1 ? 'MAX' : `${pct * 100}%`}
-                            </button>
-                          ))}
-                        </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                      Destination {withdrawCoin.toUpperCase()} Address
+                    </label>
+                    <input type="text" value={withdrawAddress} onChange={(e) => setWithdrawAddress(e.target.value)}
+                      required placeholder={`Enter ${withdrawCoin.toUpperCase()} (${CRYPTO_COINS.find((c) => c.id === withdrawCoin)?.network}) address`}
+                      className="w-full px-4 py-2.5 text-xs font-mono text-[#171717] bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl focus:outline-none focus:border-[#7C3AED]" />
+                    {savedWallets && savedWallets.some((w) => w.coin === withdrawCoin) && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {savedWallets.filter((w) => w.coin === withdrawCoin).map((w) => (
+                          <button key={w.address} type="button"
+                            onClick={() => { setWithdrawAddress(w.address); lastAutoCoin.current = withdrawCoin; }}
+                            className={`px-2 py-1 text-[9px] font-bold rounded-lg border transition-colors cursor-pointer ${
+                              withdrawAddress === w.address
+                                ? 'bg-purple-100 text-[#6D28D9] border-purple-200'
+                                : 'bg-[#F8F7FC] text-[#6B7280] border-[#EDE9FE] hover:border-purple-200'
+                            }`}>
+                            Use saved {w.address.slice(0, 10)}…{w.address.slice(-6)}
+                          </button>
+                        ))}
                       </div>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          value={amount}
-                          onChange={(e) => setAmount(e.target.value)}
-                          max={availableXena}
-                          min="1"
-                          step="any"
-                          required
-                          className="w-full px-4 py-2.5 text-base font-semibold text-[#171717] bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl focus:outline-none focus:border-[#7C3AED] focus:bg-white transition-all pr-16"
-                          placeholder="0.00"
-                        />
-                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 font-bold text-xs text-[#6D28D9]">
-                          XENA
-                        </span>
-                      </div>
-                    </div>
+                    )}
+                  </div>
 
-                    <div className="space-y-1 text-xs text-[#6B7280] bg-[#F8F7FC] p-3 rounded-xl border border-[#EDE9FE]">
-                      <div className="flex justify-between">
-                        <span>Network Fee:</span>
-                        <span className="font-medium text-[#171717]">1.50 XENA</span>
-                      </div>
-                      <div className="flex justify-between font-semibold text-[#171717]">
-                        <span>You will receive ({payoutLabel}):</span>
-                        <span className="text-[#6D28D9]">
-                          {payoutAmount.toFixed(payoutLabel === 'XENA' || payoutLabel === 'BTC' ? 4 : 2)} {payoutLabel}
-                        </span>
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-semibold text-[#171717]">Withdraw Amount (XENA)</label>
+                      <div className="flex gap-1.5">
+                        {[0.25, 0.5, 0.75, 1].map((pct) => (
+                          <button key={pct} type="button"
+                            onClick={() => setWithdrawAmount(Math.max(1, availableXena * pct).toFixed(2))}
+                            className="px-2 py-0.5 text-[10px] font-bold rounded bg-purple-50 text-[#7C3AED] hover:bg-purple-100 transition-colors">
+                            {pct === 1 ? 'MAX' : `${pct * 100}%`}
+                          </button>
+                        ))}
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-2 text-xs text-[#6B7280]">
-                      <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                      <span>Protected by 2FA & XENA Cold Vault Verification.</span>
+                    <div className="relative">
+                      <input type="number" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)}
+                        max={availableXena} min="1" step="any" required
+                        className="w-full px-4 py-2.5 text-base font-semibold text-[#171717] bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl focus:outline-none focus:border-[#7C3AED] focus:bg-white transition-all pr-16"
+                        placeholder="0.00" />
+                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 font-bold text-xs text-[#6D28D9]">XENA</span>
                     </div>
+                    <div className="flex items-center justify-between text-xs mt-1.5">
+                      <span className="text-[#6B7280]">Debits</span>
+                      <span className="font-semibold text-[#6D28D9]">≈ ${((parseFloat(withdrawAmount) || 0) * Math.max(0.0001, xenaUsdPrice)).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
 
-                    <button
-                      type="submit"
-                      disabled={isSubmitting || parseFloat(amount) > availableXena}
-                      className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-[#5B21B6] via-[#7C3AED] to-[#8B5CF6] hover:shadow-[0_4px_16px_rgba(109,40,217,0.3)] hover:scale-[1.01] transition-all disabled:opacity-50"
-                    >
-                      {isSubmitting ? 'Authorizing Withdrawal...' : 'Confirm Withdrawal'}
-                    </button>
-                  </>
-                );
-              })()}
+                  {error && (
+                    <div className="flex items-center gap-2 text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-lg p-2.5">
+                      <AlertCircle className="w-4 h-4 shrink-0" /><span>{error}</span>
+                    </div>
+                  )}
 
-              {withdrawMethod === 'ngn' && ngnWithdraw > 0 && xenaFromNgn(ngnWithdraw) > availableXena && (
-                <div className="flex items-center gap-2 text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-lg p-2.5">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>Insufficient XENA. You need at least {xenaFromNgn(ngnWithdraw).toFixed(2)} XENA (available: {availableXena.toFixed(2)}).</span>
-                </div>
+                  <div className="flex items-center gap-2 text-xs text-[#6B7280]">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Processed manually. Admin reviews and approves before payout is sent to your address.</span>
+                  </div>
+
+                  <button type="submit" disabled={isSubmitting || parseFloat(withdrawAmount) > availableXena}
+                    className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-[#5B21B6] via-[#7C3AED] to-[#8B5CF6] hover:shadow-[0_4px_16px_rgba(109,40,217,0.3)] hover:scale-[1.01] transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                    {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting...</> : <><Send className="w-4 h-4" /> Submit Withdrawal</>}
+                  </button>
+                </form>
               )}
-            </form>
+            </div>
           )}
         </div>
       </div>

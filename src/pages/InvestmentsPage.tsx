@@ -1,10 +1,11 @@
 import React, { useState, useRef } from 'react';
 import { TrendingUp, ShieldCheck, Plus, Sparkles, Check, Calculator, Headphones, LifeBuoy, MessageCircle, Mail, ChevronRight, Info, Layers } from 'lucide-react';
-import { InvestmentPlan, UserBalances } from '../types';
+import { InvestmentPlan, UserBalances, VaultPackage } from '../types';
 
 interface InvestmentsPageProps {
   plans: InvestmentPlan[];
   balances: UserBalances;
+  catalog?: VaultPackage[];
   onSelectPlan: (plan: InvestmentPlan) => void;
   onStakeNewPlan: (plan: InvestmentPlan) => boolean;
 }
@@ -105,6 +106,7 @@ const catalogPlans = [
 export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
   plans,
   balances,
+  catalog,
   onSelectPlan,
   onStakeNewPlan,
 }) => {
@@ -135,9 +137,27 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
   const avgApy = (plans.reduce((acc, p) => acc + p.projectedReturnPercent, 0) / (plans.length || 1)).toFixed(1);
   const dailyPayoutXena = totalInvested * (parseFloat(avgApy) / 100) / 365;
 
+  // DB-backed catalog (min_deposit is the XENA cost; priceUsd re-derives from it).
+  const activeCatalog = Array.isArray(catalog) && catalog.length > 0
+    ? catalog
+        .filter((v) => v.active !== false)
+        .map((v) => ({
+          id: v.id,
+          name: v.name,
+          category: v.category,
+          apy: v.apy,
+          duration: v.duration,
+          days: v.days,
+          priceUsd: v.minDeposit * xenaUsdPrice,
+          badge: v.badge,
+          risk: v.risk,
+          description: v.description,
+        }))
+    : catalogPlans;
+
   const filteredCatalog = activeCategory === 'all'
-    ? catalogPlans
-    : catalogPlans.filter((p) => p.category.toLowerCase().includes(activeCategory.toLowerCase()));
+    ? activeCatalog
+    : activeCatalog.filter((p) => p.category.toLowerCase().includes(activeCategory.toLowerCase()));
 
   const calculatedReturn = (calcAmount * (calcApy / 100) * (calcDuration / 365));
   const dailyReturn = calculatedReturn / calcDuration;

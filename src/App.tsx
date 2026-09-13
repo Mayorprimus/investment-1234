@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { VaultPackage } from './types';
 import {
   INITIAL_USER_PROFILE,
   INITIAL_BALANCES,
@@ -32,7 +33,8 @@ import {
   SEED_DEPOSITS,
   SEED_REFERRALS,
 } from './pages/AdminPanel';
-import { getState, saveState, registerAccount, loginAccount, saveAccount, changeAccountPassword, getAuthToken, adjustUserBalance, submitP2POffer, approveP2POffer, rejectP2POffer, submitP2PPayment, approveP2PPayment, rejectP2PPayment, setXenaPrice, deleteUserAccount } from './lib/api';
+import { getState, saveState, registerAccount, loginAccount, saveAccount, changeAccountPassword, getAuthToken, adjustUserBalance, submitP2POffer, approveP2POffer, rejectP2POffer, submitP2PPayment, approveP2PPayment, rejectP2PPayment, setXenaPrice, deleteUserAccount, stakeVault, claimYield, getMyState, moveP2POffer, updateLimits, adminRestartInvestment, adminCancelInvestment, adminPayoutInvestment, adminPayoutAllVaults, adminUpdateVault, adminAddVault, adminDeleteVault, adminDecideWithdrawal, logout } from './lib/api';
+import { sb, mapProfileToAccount } from './lib/supabase';
 
 // Layout Components
 import { Header } from './components/Header';
@@ -73,9 +75,18 @@ export default function App() {
   const [p2pOffers, setP2POffers] = useState<P2POffer[]>(INITIAL_P2P_OFFERS);
   const [p2pTrades, setP2PTrades] = useState<P2PTrade[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+  const [vaultCatalog, setVaultCatalog] = useState<VaultPackage[]>([]);
+  const [withdrawals, setWithdrawals] = useState<any[]>([]);
+  const [payments, setPayments] = useState<any[]>([]);
+  const [allInvestments, setAllInvestments] = useState<any[]>([]);
+  const [limits, setLimits] = useState<{ min_deposit_ngn?: number; min_withdrawal_ngn?: number }>({ min_deposit_ngn: 3000, min_withdrawal_ngn: 3000 });
 
   // Active View / Page Routing
-  const [activeTab, setActiveTab] = useState<string>('home');
+  const [activeTab, setActiveTab] = useState<string>('login');
+
+  // Auth gate — no demo access: the app only shows real pages once a
+  // Supabase session exists.
+  const [authed, setAuthed] = useState(false);
 
   // Persisted accounts (registered users) + admin-managed data (server-backed)
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -126,7 +137,8 @@ export default function App() {
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
-  // Boot: load persisted server state once on mount (fall back to seeds offline)
+  // Boot: load public state, restore any existing Supabase session, then pull
+  // the signed-in account (if any). Realtime keeps everything live thereafter.
   useEffect(() => {
     (async () => {
       try {
@@ -147,13 +159,110 @@ export default function App() {
           if (state.accounts) setAccounts(state.accounts);
           if (state.p2pOffers) setP2POffers(state.p2pOffers);
           if (state.p2pTrades) setP2PTrades(state.p2pTrades);
-          if (state.xenaPrice) applyGlobalPrice(Number(state.xenaPrice));
+          if (state.vaultCatalog) setVaultCatalog(state.vaultCatalog);
+          if (state.investments) setAllInvestments(state.investments);
+          if (state.withdrawals) setWithdrawals(state.withdrawals);
+          if (state.payments) setPayments(state.payments);
+          if (state.limits) setLimits(state.limits);
+          if (state.xenaPrice) applyGlobalPrice(Number(state.xenaPrice), state.xenaNgnRate != null ? Number(state.xenaNgnRate) : undefined);
         }
       } catch {
         // offline — keep seed defaults
       }
+      // Restore a persisted session after refresh.
+      try {
+        const user = (await sb.auth.getSession()).data?.session?.user;
+        if (user) {
+          const me = await getMyState();
+          if (me?.profile) {
+            applyAccount(mapProfileToAccount(me.profile, me.investments || []));
+            setAuthed(true);
+            if (me.profile.role === 'admin') {
+              setUser((prev) => ({ ...prev, role: 'admin' }));
+              handleNavSelect('admin');
+            } else {
+              handleNavSelect('home');
+            }
+          } else {
+            setAuthed(false);
+            handleNavSelect('login');
+          }
+        } else {
+          setAuthed(false);
+          handleNavSelect('login');
+        }
+      } catch {
+        // no session — require login
+        setAuthed(false);
+        handleNavSelect('login');
+      }
       setBooted(true);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Realtime: any public/admin table change re-syncs shared + my state so every
+  // admin action (price, approval, payout, withdrawal decision…) lands live.
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = async () => {
+      if (cancelled) return;
+      try {
+        const state = await getState();
+        if (!state) return;
+        setUsers(state.users || []);
+        setTxs(state.txs || []);
+        setMerchants(state.merchants || []);
+        setDisputes(state.disputes || []);
+        setTickets(state.tickets || []);
+        setPromos(state.promos || []);
+        setAnnouncements(state.announcements || []);
+        setAudit(state.audit || []);
+        setDeposits(state.deposits || []);
+        setReferrals(state.referrals || []);
+        setBonusLog(state.bonusLog || []);
+        if (state.settings) setAdminSettings(state.settings);
+        if (state.accounts) setAccounts(state.accounts);
+        if (state.p2pOffers) setP2POffers(state.p2pOffers);
+        if (state.p2pTrades) setP2PTrades(state.p2pTrades);
+        if (state.vaultCatalog) setVaultCatalog(state.vaultCatalog);
+        if (state.investments) setAllInvestments(state.investments);
+        if (state.withdrawals) setWithdrawals(state.withdrawals);
+        if (state.payments) setPayments(state.payments);
+        if (state.limits) setLimits(state.limits);
+        if (state.xenaPrice) applyGlobalPrice(Number(state.xenaPrice), state.xenaNgnRate != null ? Number(state.xenaNgnRate) : undefined);
+        const user = (await sb.auth.getSession()).data?.session?.user;
+        if (user) {
+          const me = await getMyState();
+          if (me?.profile) {
+            setBalances(me.profile.balances || INITIAL_BALANCES);
+            setInvestments(me.investments || []);
+            setTransactions(me.profile.transactions || []);
+            setNotifications(me.profile.notifications || []);
+          }
+        }
+      } catch {
+        // ignore transient failures
+      }
+    };
+    const channel = sb
+      .channel('xena-shared-live')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public' },
+        () => {
+          if (timer) clearTimeout(timer);
+          timer = setTimeout(() => refresh().catch(() => {}), 350);
+        }
+      )
+      .subscribe();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      sb.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persist: push the full shared admin state whenever it changes.
@@ -197,13 +306,15 @@ export default function App() {
         kycTier: user.kycTier,
         twoFactorEnabled: user.twoFactorEnabled,
         pinSet: user.pinSet,
-        verifiedAccountsCount: user.verifiedAccountsCount,
-        balances,
-        transactions,
-        investments,
-        notifications,
-        redeemedBonusCodes,
-      }).catch(() => {});
+verifiedAccountsCount: user.verifiedAccountsCount,
+      balances,
+      transactions,
+      investments,
+      notifications,
+      redeemedBonusCodes,
+      bankDetails: user.bankDetails || [],
+      walletAddresses: user.walletAddresses || [],
+    }).catch(() => {});
     }, 500);
     return () => clearTimeout(t);
   }, [user, balances, transactions, investments, notifications, redeemedBonusCodes]);
@@ -222,16 +333,13 @@ export default function App() {
     setTransactions((prev) => [newTx, ...prev]);
   };
 
-  const handleClaimYield = (planId: string, amount: number, newTx: Transaction) => {
-    setInvestments((prev) =>
-      prev.map((p) => (p.id === planId ? { ...p, earnedAmount: 0 } : p))
-    );
-    setBalances((prev) => ({
-      ...prev,
-      availableXena: prev.availableXena + amount,
-      totalBalance: prev.totalBalance + amount,
-    }));
-    setTransactions((prev) => [newTx, ...prev]);
+  const handleClaimYield = async (planId: string, _amount: number, _newTx: Transaction) => {
+    // Yield is credited server-side (RPC) — Realtime re-syncs balance and tx list.
+    try {
+      await claimYield(planId);
+    } catch {
+      // ignore — Realtime will reconcile
+    }
   };
 
   const handleP2PPaymentSubmitted = (trade: P2PTrade) => {
@@ -394,37 +502,119 @@ export default function App() {
     return { ok: true };
   };
 
-  const handleStakeNewPlan = (plan: InvestmentPlan): boolean => {
+  const handleMoveP2POffer = async (offerId: string, direction: 'up' | 'down'): Promise<{ ok: boolean; error?: string }> => {
+    const res = await moveP2POffer(offerId, direction);
+    if (!res.ok) return res;
+    setP2POffers((prev) =>
+      (() => {
+        const approved = prev.filter((o) => o.status === 'approved');
+        const rest = prev.filter((o) => o.status !== 'approved');
+        const idx = approved.findIndex((o) => o.id === offerId);
+        if (idx === -1) return prev;
+        const moved = approved.splice(idx, 1)[0];
+        if (direction === 'up') approved.unshift(moved);
+        else approved.push(moved);
+        const reindexed = approved.map((o, i) => ({ ...o, sortOrder: i + 1 }));
+        return [...reindexed, ...rest];
+      })()
+    );
+    return { ok: true };
+  };
+
+  const handleDecideWithdrawal = async (requestId: string, decision: 'approved' | 'rejected', note?: string): Promise<{ ok: boolean; error?: string }> => {
+    const res = await adminDecideWithdrawal(requestId, decision, note);
+    if (!res.ok) return res;
+    setWithdrawals((prev) =>
+      prev.map((w) =>
+        w.id === requestId
+          ? { ...w, status: decision, admin_note: note || w.admin_note, decided_at: new Date().toISOString() }
+          : w
+      )
+    );
+    return { ok: true };
+  };
+
+  const handleRestartInvestment = async (id: string, note?: string): Promise<{ ok: boolean; error?: string }> => {
+    const res = await adminRestartInvestment(id, note);
+    if (!res.ok) return res;
+    setAllInvestments((prev) =>
+      prev.map((i) => (i.id === id ? { ...i, status: 'active', progress_percent: 0, earned_xena: 0 } : i))
+    );
+    return { ok: true };
+  };
+
+  const handleCancelInvestment = async (id: string, note?: string): Promise<{ ok: boolean; error?: string }> => {
+    const res = await adminCancelInvestment(id, note);
+    if (!res.ok) return res;
+    setAllInvestments((prev) =>
+      prev.map((i) => (i.id === id ? { ...i, status: 'canceled' } : i))
+    );
+    return { ok: true };
+  };
+
+  const handlePayoutInvestment = async (id: string, note?: string): Promise<{ ok: boolean; error?: string }> => {
+    const res = await adminPayoutInvestment(id, note);
+    if (!res.ok) return res;
+    setAllInvestments((prev) =>
+      prev.map((i) => (i.id === id ? { ...i, status: 'matured', progress_percent: 100 } : i))
+    );
+    return { ok: true };
+  };
+
+  const handlePayoutAllVaults = async (): Promise<{ ok: boolean; error?: string; processed?: number }> => {
+    const res = await adminPayoutAllVaults();
+    if (!res.ok) return res;
+    setAllInvestments((prev) =>
+      prev.map((i) => (i.status === 'matured' ? { ...i, status: 'active', progress_percent: 0 } : i))
+    );
+    return res;
+  };
+
+  const handleUpdateVault = async (vaultId: string, updates: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> => {
+    const res = await adminUpdateVault(vaultId, updates);
+    if (!res.ok) return res;
+    if (res.vault) {
+      setVaultCatalog((prev) => prev.map((v) => (v.id === vaultId ? { ...v, ...res.vault } : v)));
+    }
+    return { ok: true };
+  };
+
+  const handleAddVault = async (payload: Record<string, unknown>): Promise<{ ok: boolean; error?: string; id?: string }> => {
+    const res = await adminAddVault(payload);
+    if (!res.ok) return res;
+    return { ok: true, id: res.id };
+  };
+
+  const handleDeleteVault = async (vaultId: string): Promise<{ ok: boolean; error?: string }> => {
+    const res = await adminDeleteVault(vaultId);
+    if (!res.ok) return res;
+    setVaultCatalog((prev) => prev.filter((v) => v.id !== vaultId));
+    return { ok: true };
+  };
+
+  const handleUpdateLimits = async (minDeposit: number, minWithdrawal: number): Promise<{ ok: boolean; error?: string }> => {
+    const res = await updateLimits(minDeposit, minWithdrawal);
+    if (!res.ok) return res;
+    setLimits({ min_deposit_ngn: minDeposit, min_withdrawal_ngn: minWithdrawal });
+    return { ok: true };
+  };
+
+  const handleStakeNewPlan = async (plan: InvestmentPlan): Promise<boolean> => {
     if (balances.availableXena < plan.investedAmount) {
-      alert(`Insufficient available XENA to stake this plan. Minimum required: ${plan.investedAmount} XENA`);
+      alert(`Insufficient available XENA to stake this plan. Minimum required: ${plan.investedAmount.toFixed(2)} XENA`);
       return false;
     }
-    const newTx: Transaction = {
-      id: `TX-${Date.now().toString().slice(-6)}`,
-      type: 'yield',
-      title: `Staked in ${plan.name}`,
-      amount: -plan.investedAmount,
-      unit: 'XENA',
-      timestamp: 'Just now',
-      status: 'completed',
-      txHash: `0x${Math.random().toString(16).substring(2, 10)}...${Math.random().toString(16).substring(2, 6)}`,
-    };
-
-    setInvestments((prev) => [
-      {
-        ...plan,
-        id: `plan-${Date.now()}`,
-      },
-      ...prev,
-    ]);
-
-    setBalances((prev) => ({
-      ...prev,
-      availableXena: prev.availableXena - plan.investedAmount,
-      investedXena: prev.investedXena + plan.investedAmount,
-    }));
-
-    setTransactions((prev) => [newTx, ...prev]);
+    const session = (await sb.auth.getSession()).data?.session?.user;
+    if (!session) {
+      alert('You must be signed in to stake a vault.');
+      handleNavSelect('login');
+      return false;
+    }
+    const res = await stakeVault(plan.id);
+    if (!res.ok) {
+      alert(res.error || 'Unable to stake this vault.');
+      return false;
+    }
     return true;
   };
 
@@ -552,11 +742,29 @@ export default function App() {
   };
 
   const handleNavSelect = (tab: string) => {
+    const protectedTabs = ['home', 'market', 'investments', 'p2p', 'wallet', 'profile', 'transactions', 'announcements', 'security', 'settings', 'admin'];
+    if (!authed && protectedTabs.includes(tab)) {
+      setActiveTab('login');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     setActiveTab(tab);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const applyGlobalPrice = (price: number) => {
+  const handleSignOut = async () => {
+    await logout();
+    setAuthed(false);
+    setUser(INITIAL_USER_PROFILE);
+    setBalances(INITIAL_BALANCES);
+    setTransactions(INITIAL_TRANSACTIONS);
+    setInvestments([]);
+    setNotifications([]);
+    setRedeemedBonusCodes([]);
+    handleNavSelect('login');
+  };
+
+  const applyGlobalPrice = (price: number, ngnRate?: number) => {
     const p = Math.round(price * 10000) / 10000;
     setMarketStats((prev) => ({
       ...prev,
@@ -564,18 +772,29 @@ export default function App() {
       high24h: Math.max(prev.high24h, p),
       low24h: Math.min(prev.low24h, p),
     }));
-    setBalances((prev) => ({ ...prev, currentPrice: p }));
+    setBalances((prev) => ({
+      ...prev,
+      currentPrice: p,
+      ...(ngnRate != null ? { xenaNgnRate: Number(ngnRate) } : {}),
+    }));
+    if (ngnRate != null) {
+      setP2POffers((prev) => prev.map((o) => ({ ...o, pricePerXena: p })));
+    }
   };
 
-  const handleSetXenaPrice = async (price: number): Promise<{ ok: boolean; error?: string }> => {
-    const res = await setXenaPrice(price);
+  const handleSetXenaPrice = async (price: number, ngnRate?: number): Promise<{ ok: boolean; error?: string }> => {
+    const res = await setXenaPrice(price, ngnRate);
     if (!res.ok) return { ok: false, error: res.error };
     if (res.price) {
-      applyGlobalPrice(res.price);
+      applyGlobalPrice(res.price, res.xenaNgnRate ?? ngnRate);
       setAccounts((prev) =>
         prev.map((a) => ({
           ...a,
-          balances: { ...a.balances, currentPrice: res.price as number },
+          balances: {
+            ...a.balances,
+            currentPrice: res.price as number,
+            ...(res.xenaNgnRate != null ? { xenaNgnRate: Number(res.xenaNgnRate) } : {}),
+          },
         }))
       );
     }
@@ -593,6 +812,8 @@ export default function App() {
       pinSet: acc.pinSet,
       verifiedAccountsCount: acc.verifiedAccountsCount,
       role: 'user',
+      bankDetails: acc.bankDetails || [],
+      walletAddresses: acc.walletAddresses || [],
     });
     setBalances({ ...INITIAL_BALANCES, ...acc.balances });
     setTransactions(acc.transactions || []);
@@ -606,8 +827,21 @@ export default function App() {
     if (!result.ok) {
       return { ok: false, error: result.error };
     }
+    setAuthed(true);
     if (result.role === 'admin') {
-      setUser((prev) => ({ ...prev, role: 'admin', name: 'Administrator', email: 'admin@xena.fi', kycTier: 'Staff', xenaId: 'XN-ADMIN-01', xenaCode: 'xena-admin' }));
+      if (result.account) {
+        setUser((prev) => ({
+          ...prev,
+          role: 'admin',
+          name: result.account.name || 'Administrator',
+          email: result.account.email || 'admin12345@gmail.com',
+          kycTier: result.account.kycTier || 'Staff',
+          xenaId: result.account.xenaId || 'XN-ADMIN-01',
+          xenaCode: result.account.xenaCode || 'xena-admin',
+        }));
+      } else {
+        setUser((prev) => ({ ...prev, role: 'admin', name: 'Administrator', email: 'admin12345@gmail.com' }));
+      }
       handleNavSelect('admin');
       return { ok: true };
     }
@@ -626,6 +860,7 @@ export default function App() {
     }
     if (result.account) {
       applyAccount(result.account);
+      setAuthed(true);
     }
     return { ok: true };
   };
@@ -691,6 +926,7 @@ export default function App() {
           <InvestmentsPage
             plans={investments}
             balances={balances}
+            catalog={vaultCatalog}
             onSelectPlan={handleSelectPlan}
             onStakeNewPlan={handleStakeNewPlan}
           />
@@ -702,6 +938,7 @@ export default function App() {
             offers={visibleP2POffers}
             onSelectOffer={handleSelectP2POffer}
             onAddOffer={handleAddP2POffer}
+            defaultPrice={marketStats.price}
           />
         );
 
@@ -835,6 +1072,7 @@ export default function App() {
             onDeleteAccount={handleDeleteUserAccount}
             xenaPrice={marketStats.price}
             onSetXenaPrice={handleSetXenaPrice}
+            xenaNgnRate={balances.xenaNgnRate}
             disputes={disputes}
             setDisputes={setDisputes}
             tickets={tickets}
@@ -853,6 +1091,21 @@ export default function App() {
             setBonusLog={setBonusLog}
             settings={adminSettings}
             setSettings={setAdminSettings}
+            withdrawals={withdrawals}
+            onDecideWithdrawal={handleDecideWithdrawal}
+            payments={payments}
+            onMoveP2POffer={handleMoveP2POffer}
+            allInvestments={allInvestments}
+            onRestartInvestment={handleRestartInvestment}
+            onCancelInvestment={handleCancelInvestment}
+            onPayoutInvestment={handlePayoutInvestment}
+            onPayoutAllVaults={handlePayoutAllVaults}
+            vaultCatalog={vaultCatalog}
+            onUpdateVault={handleUpdateVault}
+            onAddVault={handleAddVault}
+            onDeleteVault={handleDeleteVault}
+            limits={limits}
+            onUpdateLimits={handleUpdateLimits}
           />
         );
 
@@ -899,6 +1152,8 @@ export default function App() {
         onOpenNotifications={() => setNotificationsOpen(true)}
         onOpenSearch={() => setSearchModalOpen(true)}
         onOpenSecurity={() => handleNavSelect('security')}
+        onSignOut={handleSignOut}
+        signedIn={authed}
       />
 
       {/* Main Page Canvas */}
@@ -921,6 +1176,10 @@ export default function App() {
         nairaBalance={balances.nairaBalance}
         xenaNgnRate={balances.xenaNgnRate}
         xenaUsdPrice={marketStats.price}
+        limits={limits}
+        email={user.email}
+        savedBankDetails={user.bankDetails || []}
+        savedWallets={user.walletAddresses || []}
         onSuccess={handleBalanceChange}
       />
 

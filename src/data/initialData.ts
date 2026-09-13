@@ -23,7 +23,7 @@ export const INITIAL_BALANCES: UserBalances = {
   stakedXena: 0.00,
   lockedInOrders: 0.00,
   nairaBalance: 2450000.00,
-  xenaNgnRate: 1000 / 3000,
+  xenaNgnRate: 1500,
 };
 
 export const INITIAL_MARKET_STATS: MarketStats = {

@@ -11,6 +11,8 @@ interface HeaderProps {
   onOpenNotifications: () => void;
   onOpenSearch: () => void;
   onOpenSecurity: () => void;
+  onSignOut: () => void;
+  signedIn?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -21,6 +23,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenNotifications,
   onOpenSearch,
   onOpenSecurity,
+  onSignOut,
+  signedIn = true,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
@@ -115,6 +119,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Profile Avatar & Menu */}
             <div className="relative">
+              {signedIn ? (
               <button
                 onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
                 className="flex items-center gap-2 p-1 rounded-full hover:bg-[#F8F7FC] transition-all cursor-pointer"
@@ -128,6 +133,14 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
                 <ChevronDown className="w-3.5 h-3.5 text-[#6B7280] hidden lg:block" />
               </button>
+              ) : (
+              <button
+                onClick={() => onSelectTab('login')}
+                className="flex items-center gap-2 p-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-[#7C3AED] to-[#A855F7] hover:shadow-md transition-all cursor-pointer"
+              >
+                Sign In
+              </button>
+              )}
 
               {/* Profile Dropdown */}
               {profileDropdownOpen && (
@@ -190,7 +203,7 @@ export const Header: React.FC<HeaderProps> = ({
                     <button
                       onClick={() => {
                         setProfileDropdownOpen(false);
-                        onSelectTab('login');
+                        onSignOut();
                       }}
                       className="w-full px-4 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2 cursor-pointer"
                     >

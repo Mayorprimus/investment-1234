@@ -1,3 +1,14 @@
+export interface SavedBankDetail {
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
+}
+
+export interface SavedWalletAddress {
+  coin: 'usdt' | 'btc' | 'sol' | 'eth' | string;
+  address: string;
+}
+
 export interface UserProfile {
   name: string;
   email: string;
@@ -9,6 +20,8 @@ export interface UserProfile {
   pinSet: boolean;
   verifiedAccountsCount: number;
   role?: 'user' | 'admin';
+  bankDetails?: SavedBankDetail[];
+  walletAddresses?: SavedWalletAddress[];
 }
 
 export interface UserBalances {
@@ -266,4 +279,6 @@ export interface Account extends RegisteredUserRecord {
   investments: InvestmentPlan[];
   notifications: NotificationItem[];
   redeemedBonusCodes: string[];
+  bankDetails?: SavedBankDetail[];
+  walletAddresses?: SavedWalletAddress[];
 }

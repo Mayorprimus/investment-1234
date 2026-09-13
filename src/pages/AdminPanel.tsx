@@ -66,7 +66,8 @@ interface Props {
   onAdjustBalance: (targetEmail: string, amount: number, memo?: string) => Promise<{ ok: boolean; error?: string }>;
   onDeleteAccount: (targetEmail: string) => Promise<{ ok: boolean; error?: string }>;
   xenaPrice: number;
-  onSetXenaPrice: (price: number) => Promise<{ ok: boolean; error?: string }>;
+  onSetXenaPrice: (price: number, ngnRate?: number) => Promise<{ ok: boolean; error?: string }>;
+  xenaNgnRate?: number;
   disputes: any[];
   setDisputes: React.Dispatch<React.SetStateAction<any[]>>;
   tickets: any[];
@@ -85,6 +86,22 @@ interface Props {
   setBonusLog: React.Dispatch<React.SetStateAction<{ id: string; code: string; name: string; xena: number; time: string }[]>>;
   settings: { maintenanceMode: boolean; p2pZeroFee: boolean; withdrawApproval: boolean };
   setSettings: React.Dispatch<React.SetStateAction<{ maintenanceMode: boolean; p2pZeroFee: boolean; withdrawApproval: boolean }>>;
+  // New write-through features
+  withdrawals?: any[];
+  onDecideWithdrawal?: (requestId: string, decision: 'approved' | 'rejected', note?: string) => Promise<{ ok: boolean; error?: string }>;
+  payments?: any[];
+  onMoveP2POffer?: (offerId: string, direction: 'up' | 'down') => Promise<{ ok: boolean; error?: string }>;
+  allInvestments?: any[];
+  onRestartInvestment?: (id: string, note?: string) => Promise<{ ok: boolean; error?: string }>;
+  onCancelInvestment?: (id: string, note?: string) => Promise<{ ok: boolean; error?: string }>;
+  onPayoutInvestment?: (id: string, note?: string) => Promise<{ ok: boolean; error?: string }>;
+  onPayoutAllVaults?: () => Promise<{ ok: boolean; error?: string; processed?: number }>;
+  vaultCatalog?: any[];
+  onUpdateVault?: (vaultId: string, updates: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
+  onAddVault?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; id?: string }>;
+  onDeleteVault?: (vaultId: string) => Promise<{ ok: boolean; error?: string }>;
+  limits?: { min_deposit_ngn?: number; min_withdrawal_ngn?: number };
+  onUpdateLimits?: (minDeposit: number, minWithdrawal: number) => Promise<{ ok: boolean; error?: string }>;
 }
 
 export const SEED_USERS = [
@@ -195,6 +212,7 @@ export const AdminPanel: React.FC<Props> = ({
   onAdjustBalance,
   onDeleteAccount,
   xenaPrice,
+  xenaNgnRate = 1500,
   onSetXenaPrice,
   disputes,
   setDisputes,
@@ -214,6 +232,21 @@ export const AdminPanel: React.FC<Props> = ({
   setBonusLog,
   settings,
   setSettings,
+  withdrawals = [],
+  onDecideWithdrawal,
+  payments = [],
+  onMoveP2POffer,
+  allInvestments = [],
+  onRestartInvestment,
+  onCancelInvestment,
+  onPayoutInvestment,
+  onPayoutAllVaults,
+  vaultCatalog = [],
+  onUpdateVault,
+  onAddVault,
+  onDeleteVault,
+  limits = {},
+  onUpdateLimits,
 }) => {
   const { maintenanceMode = false, p2pZeroFee = true, withdrawApproval = true } = settings;
   const updateSettings = (patch: Partial<{ maintenanceMode: boolean; p2pZeroFee: boolean; withdrawApproval: boolean }>) =>
@@ -238,6 +271,7 @@ export const AdminPanel: React.FC<Props> = ({
   const [adjustError, setAdjustError] = useState<string | null>(null);
 
   const [priceInput, setPriceInput] = useState<string>(String(xenaPrice || 2.85));
+  const [ngnRateInput, setNgnRateInput] = useState<string>(String(xenaNgnRate || 1500));
   const [priceBusy, setPriceBusy] = useState(false);
   const [priceError, setPriceError] = useState<string | null>(null);
 
@@ -245,6 +279,62 @@ export const AdminPanel: React.FC<Props> = ({
   const [convReplies, setConvReplies] = useState<Record<string, string>>({});
   const [convBusy, setConvBusy] = useState(false);
   const [convNotice, setConvNotice] = useState<string | null>(null);
+
+  const pendingWithdrawals = withdrawals.filter((w) => w.status === 'pending');
+  const [wdNotes, setWdNotes] = useState<Record<string, string>>({});
+  const [wdBusy, setWdBusy] = useState(false);
+  const [wdNotice, setWdNotice] = useState<string | null>(null);
+  const wdNotify = (msg: string) => {
+    setWdNotice(msg);
+    setTimeout(() => setWdNotice(null), 4000);
+  };
+
+  const [minDepInput, setMinDepInput] = useState<string>(String(limits?.min_deposit_ngn ?? 3000));
+  const [minWdInput, setMinWdInput] = useState<string>(String(limits?.min_withdrawal_ngn ?? 3000));
+  const [limitsBusy, setLimitsBusy] = useState(false);
+  const [limitsError, setLimitsError] = useState<string | null>(null);
+
+  const [vaultEditorId, setVaultEditorId] = useState<string | null>(null);
+  const [vaultDraft, setVaultDraft] = useState<Record<string, any>>({});
+  const [showAddVault, setShowAddVault] = useState(false);
+
+  const handleDecideWithdrawal = async (id: string, decision: 'approved' | 'rejected') => {
+    if (!onDecideWithdrawal) return;
+    const note = (wdNotes[id] || '').trim() || undefined;
+    if (decision === 'approved' && !window.confirm('Approve this withdrawal? XENA will be debited from the user and settled.')) return;
+    setWdBusy(true);
+    const res = await onDecideWithdrawal(id, decision, note);
+    setWdBusy(false);
+    if (!res.ok) {
+      wdNotify(res.error || 'Unable to update withdrawal.');
+      return;
+    }
+    setWdNotes((prev) => ({ ...prev, [id]: '' }));
+    wdNotify(`Withdrawal ${decision === 'approved' ? 'approved' : 'rejected'}.`);
+  };
+
+  const handleApplyLimits = async () => {
+    const md = parseFloat(minDepInput);
+    const mw = parseFloat(minWdInput);
+    if (!md || !mw || md <= 0 || mw <= 0) {
+      setLimitsError('Enter valid minimums greater than 0.');
+      return;
+    }
+    if (!onUpdateLimits) {
+      setLimitsError('Limits update unavailable.');
+      return;
+    }
+    setLimitsBusy(true);
+    setLimitsError(null);
+    const res = await onUpdateLimits(md, mw);
+    setLimitsBusy(false);
+    if (!res.ok) {
+      setLimitsError(res.error || 'Unable to update limits.');
+      return;
+    }
+    setLimitsError(null);
+    notify('Deposit & withdrawal minimums updated for all users.');
+  };
 
   const loadConversations = async () => {
     const res = await getSupportConversations();
@@ -261,16 +351,22 @@ export const AdminPanel: React.FC<Props> = ({
       setPriceError('Enter a valid price greater than 0.');
       return;
     }
+    const r = parseFloat(ngnRateInput);
+    if (!r || r <= 0) {
+      setPriceError('Enter a valid ₦ rate greater than 0.');
+      return;
+    }
     setPriceBusy(true);
     setPriceError(null);
-    const res = await onSetXenaPrice(p);
+    const res = await onSetXenaPrice(p, r);
     setPriceBusy(false);
     if (!res.ok) {
       setPriceError(res.error || 'Unable to update price.');
       return;
     }
     setPriceInput(String(p));
-    setNotice('XENA market price updated for all users.');
+    setNgnRateInput(String(r));
+    setNotice('XENA price & ₦ rate updated for all users.');
   };
 
   const handleReplyConversation = async (conversationId: string, email: string) => {
@@ -397,13 +493,14 @@ export const AdminPanel: React.FC<Props> = ({
     volume24h: '$8.4M',
     xenaCirculation: '250M',
     totalStaked: '885K',
-    pendingPayouts: 3,
+    pendingPayouts: pendingWithdrawals.length,
   };
 
   const nav = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'users', label: 'Users', icon: UsersIcon },
     { id: 'transactions', label: 'Transactions', icon: ArrowLeftRight },
+    { id: 'withdrawals', label: 'Withdrawals', icon: ArrowUpRight },
     { id: 'deposits', label: 'Deposits', icon: Banknote },
     { id: 'referrals', label: 'Referrals', icon: UserPlus },
     { id: 'p2p', label: 'P2P Marketplace', icon: Handshake },
@@ -517,12 +614,12 @@ export const AdminPanel: React.FC<Props> = ({
                 </div>
               </div>
 
-              <button onClick={() => setSection('transactions')} className="w-full flex items-center justify-between bg-white border border-[#EDE9FE] rounded-2xl p-4 hover:border-purple-200 transition-colors cursor-pointer shadow-sm">
+              <button onClick={() => setSection('withdrawals')} className="w-full flex items-center justify-between bg-white border border-[#EDE9FE] rounded-2xl p-4 hover:border-purple-200 transition-colors cursor-pointer shadow-sm">
                 <div className="flex items-center gap-3">
                   <span className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center"><AlertTriangle className="w-4 h-4" /></span>
                   <div className="text-left">
-                    <span className="block text-xs font-bold text-[#171717]">{kpi.pendingPayouts} withdrawals awaiting approval</span>
-                    <span className="block text-[10px] text-[#6B7280]">Review pending payouts now</span>
+                    <span className="block text-xs font-bold text-[#171717]">{pendingWithdrawals.length} withdrawal{pendingWithdrawals.length === 1 ? '' : 's'} awaiting approval</span>
+                    <span className="block text-[10px] text-[#6B7280]">Review pending withdrawal requests now</span>
                   </div>
                 </div>
                 <ChevronRight className="w-4 h-4 text-[#6B7280]" />
@@ -726,6 +823,82 @@ export const AdminPanel: React.FC<Props> = ({
             </div>
           )}
 
+          {/* ============ WITHDRAWALS ============ */}
+          {section === 'withdrawals' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: 'Awaiting Approval', value: pendingWithdrawals.length, icon: Timer, tone: 'bg-amber-50 text-amber-600' },
+                  { label: 'Approved', value: withdrawals.filter((w) => w.status === 'approved').length, icon: Check, tone: 'bg-emerald-50 text-[#16A34A]' },
+                  { label: 'Rejected', value: withdrawals.filter((w) => w.status === 'rejected').length, icon: X, tone: 'bg-red-50 text-red-600' },
+                  { label: 'Total Requests', value: withdrawals.length, icon: ArrowUpRight, tone: 'bg-purple-50 text-[#7C3AED]' },
+                ].map((s) => (
+                  <div key={s.label} className="bg-white border border-[#EDE9FE] rounded-2xl p-3.5 shadow-sm">
+                    <span className={`w-8 h-8 rounded-lg ${s.tone} flex items-center justify-center`}><s.icon className="w-4 h-4" /></span>
+                    <span className="block text-lg font-extrabold text-[#171717] font-mono mt-2">{s.value}</span>
+                    <span className="block text-[10px] text-[#6B7280] font-semibold mt-0.5">{s.label}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-white border border-[#EDE9FE] rounded-2xl p-4 shadow-sm">
+                <h3 className="text-sm font-bold text-[#171717] pb-3 border-b border-[#EDE9FE]">Withdrawal Queue — Admin Approval Only</h3>
+                <p className="text-[10px] text-[#6B7280] mt-2">Approving debits the user's XENA and marks the payout for settlement. No withdrawal is ever paid automatically.</p>
+                {wdNotice && <p className="text-[10px] font-bold text-[#6D28D9] bg-purple-50 border border-purple-100 rounded-lg px-2.5 py-1.5 mt-2">{wdNotice}</p>}
+                {pendingWithdrawals.length === 0 ? (
+                  <p className="text-center text-xs text-[#9CA3AF] py-8">No pending withdrawal requests.</p>
+                ) : (
+                  <div className="divide-y divide-[#EDE9FE] mt-2">
+                    {pendingWithdrawals.map((w) => (
+                      <div key={w.id} className="py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-xs font-bold text-[#171717">{w.user_name || w.email}</span>
+                          <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">Pending</span>
+                        </div>
+                        <span className="block text-[10px] text-[#6B7280] mt-0.5">
+                          <b className="text-[#6D28D9]">{Number(w.amount_xena || 0)} XENA</b> → {w.method === 'ngn' ? `NGN ${Number(w.amount_ngn || 0).toLocaleString()} · ${w.bank || ''} ${w.account_number || ''}` : `${String(w.method || '').toUpperCase()} ${w.address || ''}`}
+                        </span>
+                        <span className="block text-[9px] text-[#9CA3AF] mt-0.5">Ref {w.reference}</span>
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
+                          <input
+                            value={wdNotes[w.id] || ''}
+                            onChange={(e) => setWdNotes((prev) => ({ ...prev, [w.id]: e.target.value }))}
+                            placeholder="Note / memo (optional)"
+                            className="flex-1 min-w-[160px] px-3 py-2 bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#7C3AED] transition-all"
+                          />
+                          <button onClick={() => handleDecideWithdrawal(w.id, 'approved')} disabled={wdBusy} className="px-2.5 py-2 rounded-lg bg-emerald-50 text-[#16A34A] text-[10px] font-bold border border-emerald-100 cursor-pointer disabled:opacity-60"><Check className="w-3 h-3 inline mr-0.5" />Approve</button>
+                          <button onClick={() => handleDecideWithdrawal(w.id, 'rejected')} disabled={wdBusy} className="px-2.5 py-2 rounded-lg bg-red-50 text-red-600 text-[10px] font-bold border border-red-100 cursor-pointer disabled:opacity-60"><X className="w-3 h-3 inline mr-0.5" />Reject</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-white border border-[#EDE9FE] rounded-2xl p-4 shadow-sm">
+                <h3 className="text-sm font-bold text-[#171717] pb-3 border-b border-[#EDE9FE]">Withdrawal History</h3>
+                {withdrawals.filter((w) => w.status !== 'pending').length === 0 ? (
+                  <p className="text-center text-xs text-[#9CA3AF] py-6">No decided withdrawals yet.</p>
+                ) : (
+                  <div className="divide-y divide-[#EDE9FE] mt-2">
+                    {withdrawals.filter((w) => w.status !== 'pending').map((w) => (
+                      <div key={w.id} className="py-2.5 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <span className="block text-xs font-bold text-[#171717]">{w.user_name || w.email}</span>
+                          <span className="block text-[10px] text-[#6B7280]">{Number(w.amount_xena || 0)} XENA · {w.method === 'ngn' ? 'NGN Bank' : String(w.method || '').toUpperCase()} · {w.reference}</span>
+                          {w.admin_note && <span className="block text-[9px] text-[#9CA3AF]">Note: {w.admin_note}</span>}
+                        </div>
+                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border shrink-0 ${w.status === 'approved' ? 'bg-emerald-50 text-[#16A34A] border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
+                          {w.status === 'approved' ? 'Approved' : 'Rejected'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* ============ DEPOSITS ============ */}
           {section === 'deposits' && (
             <div className="space-y-4">
@@ -802,6 +975,49 @@ export const AdminPanel: React.FC<Props> = ({
                       })}
                     </tbody>
                   </table>
+                </div>
+              </div>
+
+              <div className="bg-white border border-[#EDE9FE] rounded-2xl p-4 shadow-sm">
+                <h3 className="text-sm font-bold text-[#171717] pb-3 border-b border-[#EDE9FE]">Live Payment Ledger (Paystack / NOWPayments)</h3>
+                <p className="text-[10px] text-[#6B7280] mt-2">Deposits credited automatically when confirmed. Webhook + verify both idempotent.</p>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full text-left text-xs min-w-[640px]">
+                    <thead>
+                      <tr className="text-[10px] text-[#9CA3AF] uppercase tracking-wide font-bold border-b border-[#EDE9FE]">
+                        <th className="py-2 pr-3">Email</th>
+                        <th className="py-2 pr-3">Provider</th>
+                        <th className="py-2 pr-3 text-right">Amount</th>
+                        <th className="py-2 pr-3 text-right">XENA</th>
+                        <th className="py-2 pr-3">Status</th>
+                        <th className="py-2 pr-3">Reference</th>
+                        <th className="py-2">When</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#EDE9FE]">
+                      {payments.slice(0, 40).map((p) => (
+                        <tr key={p.id} className="hover:bg-[#F8F7FC]">
+                          <td className="py-2.5 pr-3 font-bold text-[#171717]">{p.email || '—'}</td>
+                          <td className="py-2.5 pr-3">
+                            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full border bg-[#F8F7FC] text-[#6B7280] border-[#EDE9FE]">{String(p.provider || '').toUpperCase()}</span>
+                          </td>
+                          <td className="py-2.5 pr-3 text-right font-mono font-bold text-[#171717]">{Number(p.amount || 0).toLocaleString()} {p.currency || 'USD'}</td>
+                          <td className="py-2.5 pr-3 text-right font-mono text-[#6D28D9]">{Number(p.xena || 0)}</td>
+                          <td className="py-2.5 pr-3">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                              p.status === 'confirmed' ? 'bg-emerald-50 text-[#16A34A] border-emerald-100'
+                              : p.status === 'pending' ? 'bg-amber-50 text-amber-600 border-amber-100'
+                              : 'bg-red-50 text-red-600 border-red-100'}`}>
+                              {String(p.status || 'pending').toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="py-2.5 pr-3 text-[10px] text-[#9CA3AF] font-mono max-w-[140px] truncate">{p.reference}</td>
+                          <td className="py-2.5 text-[10px] text-[#6B7280] whitespace-nowrap">{p.created_at ? new Date(p.created_at).toLocaleString() : ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {payments.length === 0 && <p className="text-center text-xs text-[#9CA3AF] py-6">No live payments yet.</p>}
                 </div>
               </div>
 
@@ -956,6 +1172,49 @@ export const AdminPanel: React.FC<Props> = ({
                 </div>
               </div>
 
+              {/* Live Listings — admin can reorder the marketplace (top/bottom) */}
+              <div className="bg-white border border-[#EDE9FE] rounded-2xl p-4 shadow-sm">
+                <h3 className="text-sm font-bold text-[#171717] pb-3 border-b border-[#EDE9FE]">Live Listings &amp; Positioning</h3>
+                <p className="text-[10px] text-[#6B7280] mt-2">Approved ads appear in marketplace order. Move any listing up to the top or down toward the bottom.</p>
+                <div className="divide-y divide-[#EDE9FE] mt-2">
+                  {p2pOffers.filter((o) => o.status === 'approved').map((o, i, arr) => (
+                    <div key={o.id} className="py-2.5 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <span className="text-xs font-bold text-[#171717]">#{i + 1} {o.merchantName} — {o.type || 'SELL'}</span>
+                        <span className="block text-[10px] text-[#6B7280]">{Number(o.availableXena || 0)} XENA @ ${o.pricePerXena} · {Number(o.minLimit || 0)}–{Number(o.maxLimit || 0)}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          onClick={async () => {
+                            if (!onMoveP2POffer) return;
+                            const res = await onMoveP2POffer(o.id, 'up');
+                            notify(res.ok ? 'Listing moved up' : (res.error || 'Move failed'));
+                          }}
+                          disabled={i === 0 || !onMoveP2POffer}
+                          className="px-2.5 py-1 rounded-lg bg-purple-50 text-[#6D28D9] text-[10px] font-bold border border-purple-100 cursor-pointer disabled:opacity-40"
+                        >
+                          <ArrowUpRight className="w-3 h-3 inline mr-0.5" />Move Up
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!onMoveP2POffer) return;
+                            const res = await onMoveP2POffer(o.id, 'down');
+                            notify(res.ok ? 'Listing moved down' : (res.error || 'Move failed'));
+                          }}
+                          disabled={i === arr.length - 1 || !onMoveP2POffer}
+                          className="px-2.5 py-1 rounded-lg bg-purple-50 text-[#6D28D9] text-[10px] font-bold border border-purple-100 cursor-pointer disabled:opacity-40"
+                        >
+                          <ArrowDownRight className="w-3 h-3 inline mr-0.5" />Move Down
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {p2pOffers.filter((o) => o.status === 'approved').length === 0 && (
+                    <p className="text-center text-xs text-[#9CA3AF] py-4">No approved listings yet.</p>
+                  )}
+                </div>
+              </div>
+
               <div className="bg-white border border-[#EDE9FE] rounded-2xl p-4 shadow-sm">
                 <h3 className="text-sm font-bold text-[#171717] pb-3 border-b border-[#EDE9FE]">Merchant Verification</h3>
                 <div className="divide-y divide-[#EDE9FE]">
@@ -1001,7 +1260,12 @@ export const AdminPanel: React.FC<Props> = ({
           {section === 'investments' && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {[{ l: 'Total Staked', v: '885K XENA' }, { l: 'Active Vaults', v: '2,021' }, { l: 'Avg APY', v: '30.8%' }, { l: 'Daily Compounding', v: '1,240' }].map((s) => (
+                {[
+                  { l: 'Total Staked', v: `${allInvestments.reduce((s, i) => s + Number(i.invested_xena || 0), 0).toLocaleString()} XENA` },
+                  { l: 'Active Vaults', v: allInvestments.filter((i) => i.status === 'active').length.toLocaleString() },
+                  { l: 'Matured', v: allInvestments.filter((i) => i.status === 'matured').length.toLocaleString() },
+                  { l: 'Accrued Yield', v: `${allInvestments.reduce((s, i) => s + Number(i.earned_xena || 0), 0).toFixed(2)} XENA` },
+                ].map((s) => (
                   <div key={s.l} className="bg-white border border-[#EDE9FE] rounded-2xl p-3.5 shadow-sm">
                     <span className="block text-lg font-extrabold text-[#171717] font-mono">{s.v}</span>
                     <span className="block text-[10px] text-[#6B7280] font-semibold mt-0.5">{s.l}</span>
@@ -1010,26 +1274,180 @@ export const AdminPanel: React.FC<Props> = ({
               </div>
 
               <div className="bg-white border border-[#EDE9FE] rounded-2xl p-4 shadow-sm">
-                <h3 className="text-sm font-bold text-[#171717] pb-3 border-b border-[#EDE9FE]">Vault Categories & APY</h3>
-                <div className="divide-y divide-[#EDE9FE]">
-                  {VAULTS.map((v) => (
-                    <div key={v.category} className="py-2.5 flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <span className="block text-xs font-bold text-[#171717]">{v.category}</span>
-                        <span className="block text-[10px] text-[#6B7280]">{v.staked.toLocaleString()} XENA staked · {v.plans} plans</span>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button onClick={() => notify(`${v.category} APY adjusted`) } className="px-2.5 py-1 rounded-lg bg-[#F8F7FC] text-[#6B7280] text-[10px] font-bold border border-[#EDE9FE] cursor-pointer">-</button>
-                        <span className="text-xs font-extrabold text-[#6D28D9] font-mono w-12 text-center">{v.apy.toFixed(1)}%</span>
-                        <button onClick={() => notify(`${v.category} APY adjusted`) } className="px-2.5 py-1 rounded-lg bg-[#F8F7FC] text-[#6B7280] text-[10px] font-bold border border-[#EDE9FE] cursor-pointer">+</button>
-                      </div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#EDE9FE]">
+                  <h3 className="text-sm font-bold text-[#171717]">Active Investments — User Control</h3>
+                  <button
+                    onClick={async () => {
+                      if (!onPayoutAllVaults) return;
+                      if (!window.confirm('Pay out all matured vaults now?')) return;
+                      const res = await onPayoutAllVaults();
+                      notify(res.ok ? `Payout run processed ${res.processed ?? 0} vaults` : (res.error || 'Payout failed'));
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white text-[10px] font-bold cursor-pointer"
+                  >
+                    Run Manual Payout (All Matured)
+                  </button>
+                </div>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full text-left text-xs min-w-[760px]">
+                    <thead>
+                      <tr className="text-[10px] text-[#9CA3AF] uppercase tracking-wide font-bold border-b border-[#EDE9FE]">
+                        <th className="py-2 pr-3">User</th>
+                        <th className="py-2 pr-3">Vault</th>
+                        <th className="py-2 pr-3 text-right">Invested</th>
+                        <th className="py-2 pr-3 text-right">Earned</th>
+                        <th className="py-2 pr-3">Progress</th>
+                        <th className="py-2 pr-3">Status</th>
+                        <th className="py-2 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#EDE9FE]">
+                      {allInvestments.map((i) => (
+                        <tr key={i.id} className="hover:bg-[#F8F7FC]">
+                          <td className="py-2.5 pr-3">
+                            <span className="block font-bold text-[#171717]">{i.user_name || i.email}</span>
+                            <span className="block text-[10px] text-[#6B7280]">{i.email}</span>
+                          </td>
+                          <td className="py-2.5 pr-3 text-[#6B7280]">{i.plan_name}</td>
+                          <td className="py-2.5 pr-3 text-right font-mono font-bold text-[#171717]">{Number(i.invested_xena || 0)}</td>
+                          <td className="py-2.5 pr-3 text-right font-mono font-bold text-[#16A34A]">{Number(i.earned_xena || 0).toFixed(2)}</td>
+                          <td className="py-2.5 pr-3">
+                            <div className="flex items-center gap-2">
+                              <div className="h-1.5 w-16 bg-[#EDE9FE] rounded-full overflow-hidden">
+                                <div className="h-full bg-gradient-to-r from-[#7C3AED] to-[#A855F7] rounded-full" style={{ width: `${Math.min(100, Number(i.progress_percent || 0))}%` }} />
+                              </div>
+                              <span className="text-[9px] text-[#6B7280]">{Number(i.progress_percent || 0)}%</span>
+                            </div>
+                          </td>
+                          <td className="py-2.5 pr-3">
+                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                              i.status === 'active' ? 'bg-emerald-50 text-[#16A34A] border-emerald-100'
+                              : i.status === 'matured' ? 'bg-sky-50 text-sky-600 border-sky-100'
+                              : 'bg-red-50 text-red-600 border-red-100'}`}>
+                              {String(i.status).toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="py-2.5 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {i.status !== 'active' && i.status !== 'canceled' && (
+                                <button onClick={async () => { if (onRestartInvestment) { const r = await onRestartInvestment(i.id); notify(r.ok ? 'Vault restarted (fresh term)' : (r.error || 'Failed')); } }} className="px-2 py-1 rounded-lg bg-purple-50 text-[#6D28D9] text-[10px] font-bold border border-purple-100 cursor-pointer"><PlayCircle className="w-3 h-3 inline mr-0.5" />Restart</button>
+                              )}
+                              {i.status === 'active' && (
+                                <>
+                                  <button onClick={async () => { if (!onCancelInvestment || !window.confirm('Cancel this vault? Principal returns, yield forfeits.')) return; const r = await onCancelInvestment(i.id); notify(r.ok ? 'Vault cancelled — principal refunded' : (r.error || 'Failed')); }} className="px-2 py-1 rounded-lg bg-amber-50 text-amber-600 text-[10px] font-bold border border-amber-100 cursor-pointer"><PauseCircle className="w-3 h-3 inline mr-0.5" />Cancel</button>
+                                  <button onClick={async () => { if (!onPayoutInvestment || !window.confirm('Pay out this vault now (principal + yield)?')) return; const r = await onPayoutInvestment(i.id); notify(r.ok ? 'Vault paid out' : (r.error || 'Failed')); }} className="px-2 py-1 rounded-lg bg-emerald-50 text-[#16A34A] text-[10px] font-bold border border-emerald-100 cursor-pointer"><Banknote className="w-3 h-3 inline mr-0.5" />Payout</button>
+                                </>
+                              )}
+                              {i.status === 'canceled' && <span className="text-[9px] text-[#9CA3AF]">Cancelled</span>}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {allInvestments.length === 0 && <p className="text-center text-xs text-[#9CA3AF] py-6">No investments yet.</p>}
+                </div>
+              </div>
+
+              <div className="bg-white border border-[#EDE9FE] rounded-2xl p-4 shadow-sm">
+                <h3 className="text-sm font-bold text-[#171717] pb-3 border-b border-[#EDE9FE]">Vault Catalog (shapes staking page)</h3>
+                <p className="text-[10px] text-[#6B7280] mt-2">minDeposit is staked as XENA. Changes go live on every user's staking page instantly.</p>
+                <div className="divide-y divide-[#EDE9FE] mt-2">
+                  {vaultCatalog.map((v) => (
+                    <div key={v.id} className="py-2.5">
+                      {vaultEditorId === v.id ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          <input value={vaultDraft.name || ''} onChange={(e) => setVaultDraft((prev) => ({ ...prev, name: e.target.value }))} placeholder="Name" className="px-2 py-1.5 bg-[#F8F7FC] border border-[#EDE9FE] rounded-lg text-[11px] font-semibold" />
+                          <input value={vaultDraft.apy ?? ''} onChange={(e) => setVaultDraft((prev) => ({ ...prev, apy: e.target.value }))} type="number" step="any" placeholder="APY %" className="px-2 py-1.5 bg-[#F8F7FC] border border-[#EDE9FE] rounded-lg text-[11px] font-semibold" />
+                          <input value={vaultDraft.minDeposit ?? ''} onChange={(e) => setVaultDraft((prev) => ({ ...prev, minDeposit: e.target.value }))} type="number" step="any" placeholder="minDeposit (XENA)" className="px-2 py-1.5 bg-[#F8F7FC] border border-[#EDE9FE] rounded-lg text-[11px] font-semibold" />
+                          <input value={vaultDraft.days ?? ''} onChange={(e) => setVaultDraft((prev) => ({ ...prev, days: e.target.value }))} type="number" placeholder="Days" className="px-2 py-1.5 bg-[#F8F7FC] border border-[#EDE9FE] rounded-lg text-[11px] font-semibold" />
+                          <div className="flex items-center gap-1.5 col-span-2 sm:col-span-4">
+                            <button
+                              onClick={async () => {
+                                if (!onUpdateVault) return;
+                                const res = await onUpdateVault(v.id, {
+                                  name: vaultDraft.name,
+                                  apy: parseFloat(vaultDraft.apy),
+                                  minDeposit: parseFloat(vaultDraft.minDeposit),
+                                  days: parseInt(vaultDraft.days, 10),
+                                  active: v.active !== false,
+                                });
+                                notify(res.ok ? 'Vault updated — live now' : (res.error || 'Failed'));
+                                setVaultEditorId(null);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-emerald-50 text-[#16A34A] text-[10px] font-bold border border-emerald-100 cursor-pointer"
+                            >
+                              Save
+                            </button>
+                            <button onClick={() => setVaultEditorId(null)} className="px-2.5 py-1.5 rounded-lg bg-[#F8F7FC] text-[#6B7280] text-[10px] font-bold border border-[#EDE9FE] cursor-pointer">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <span className="block text-xs font-bold text-[#171717]">{v.name} <span className="text-[9px] font-bold text-[#6D28D9] bg-purple-50 px-1.5 py-0.5 rounded-full">{v.apy}% APY</span> <span className="text-[9px] text-[#6B7280]">min {v.min_deposit ?? v.minDeposit} XENA · {v.days ?? 0}d</span></span>
+                            <span className="block text-[10px] text-[#6B7280]">{v.category || 'Flexible'} · {v.risk || 'Low Risk'}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              onClick={async () => {
+                                if (!onUpdateVault) return;
+                                const res = await onUpdateVault(v.id, { active: v.active !== false ? false : true });
+                                notify(res.ok ? (v.active !== false ? 'Vault hidden' : 'Vault visible') : (res.error || 'Failed'));
+                              }}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border cursor-pointer ${v.active !== false ? 'bg-emerald-50 text-[#16A34A] border-emerald-100' : 'bg-[#F8F7FC] text-[#6B7280] border-[#EDE9FE]'}`}
+                            >
+                              {v.active !== false ? 'Active' : 'Hidden'}
+                            </button>
+                            <button onClick={() => { setVaultEditorId(v.id); setVaultDraft({ name: v.name, apy: v.apy, minDeposit: v.min_deposit ?? v.minDeposit, days: v.days ?? 0 }); }} className="px-2.5 py-1 rounded-lg bg-[#F8F7FC] text-[#6B7280] text-[10px] font-bold border border-[#EDE9FE] cursor-pointer">Edit</button>
+                            <button
+                              onClick={async () => {
+                                if (!onDeleteVault || !window.confirm('Delete this vault package?')) return;
+                                const res = await onDeleteVault(v.id);
+                                notify(res.ok ? 'Vault deleted' : (res.error || 'Failed'));
+                              }}
+                              className="px-2 py-1 rounded-lg bg-red-50 text-red-600 text-[10px] font-bold border border-red-100 cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
                 <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[#EDE9FE]">
-                  <button onClick={() => notify('Manual payout run triggered')} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white text-[10px] font-bold cursor-pointer">Run Manual Payout</button>
-                  <button onClick={() => notify('Payout schedule saved')} className="px-3 py-1.5 rounded-lg bg-[#F8F7FC] border border-[#EDE9FE] text-[#6B7280] text-[10px] font-bold cursor-pointer">Edit Schedule</button>
+                  <button onClick={() => setShowAddVault(!showAddVault)} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer"><Plus className="w-3 h-3" /> Add Vault</button>
                 </div>
+                {showAddVault && (
+                  <div className="mt-3 p-3 bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl grid grid-cols-2 sm:grid-cols-5 gap-2">
+                    <input value={vaultDraft.name || ''} onChange={(e) => setVaultDraft((prev) => ({ ...prev, name: e.target.value }))} placeholder="Name" className="w-full px-2 py-1.5 bg-white border border-[#EDE9FE] rounded-lg text-[11px] font-semibold" />
+                    <input value={vaultDraft.category || ''} onChange={(e) => setVaultDraft((prev) => ({ ...prev, category: e.target.value }))} placeholder="Category (e.g. Fixed Term)" className="w-full px-2 py-1.5 bg-white border border-[#EDE9FE] rounded-lg text-[11px] font-semibold" />
+                    <input value={vaultDraft.apy ?? ''} onChange={(e) => setVaultDraft((prev) => ({ ...prev, apy: e.target.value }))} type="number" step="any" placeholder="APY %" className="w-full px-2 py-1.5 bg-white border border-[#EDE9FE] rounded-lg text-[11px] font-semibold" />
+                    <input value={vaultDraft.minDeposit ?? ''} onChange={(e) => setVaultDraft((prev) => ({ ...prev, minDeposit: e.target.value }))} type="number" step="any" placeholder="minDeposit XENA" className="w-full px-2 py-1.5 bg-white border border-[#EDE9FE] rounded-lg text-[11px] font-semibold" />
+                    <input value={vaultDraft.days ?? ''} onChange={(e) => setVaultDraft((prev) => ({ ...prev, days: e.target.value }))} type="number" placeholder="Days" className="w-full px-2 py-1.5 bg-white border border-[#EDE9FE] rounded-lg text-[11px] font-semibold" />
+                    <button
+                      onClick={async () => {
+                        if (!onAddVault || !vaultDraft.name) return;
+                        const res = await onAddVault({
+                          name: vaultDraft.name,
+                          category: vaultDraft.category || 'Flexible',
+                          apy: parseFloat(vaultDraft.apy || '0'),
+                          minDeposit: parseFloat(vaultDraft.minDeposit || '1'),
+                          days: parseInt(vaultDraft.days || '0', 10),
+                          badge: vaultDraft.badge || '',
+                          risk: 'Low Risk',
+                          active: true,
+                        });
+                        notify(res.ok ? 'Vault added' : (res.error || 'Failed'));
+                        if (res.ok) setShowAddVault(false);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-purple-50 text-[#6D28D9] text-[10px] font-bold border border-purple-100 cursor-pointer"
+                    >
+                      Create
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1210,10 +1628,10 @@ export const AdminPanel: React.FC<Props> = ({
             <div className="space-y-4">
               <div className="bg-white border border-[#EDE9FE] rounded-2xl p-4 shadow-sm">
                 <h3 className="text-sm font-bold text-[#171717] pb-3 border-b border-[#EDE9FE]">Market Price (XENA)</h3>
-                <p className="text-[10px] text-[#6B7280] mt-2">Set the live XENA/USD price shown on every user's dashboard, wallet, market charts and holdings. This overrides the default price globally.</p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-3 items-end">
+                <p className="text-[10px] text-[#6B7280] mt-2">Sets the live XENA/USD price and ₦/XENA rate shown on every user's dashboard, wallet, market charts, buy/sell, P2P ads and deposit/withdraw conversions. Saves instantly for all users.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5 mt-3 items-end">
                   <div>
-                    <label className="block text-[10px] font-bold text-[#6B7280] mb-1">Current price (USD)</label>
+                    <label className="block text-[10px] font-bold text-[#6B7280] mb-1">Price (USD)</label>
                     <input
                       value={priceInput}
                       onChange={(e) => setPriceInput(e.target.value)}
@@ -1224,11 +1642,23 @@ export const AdminPanel: React.FC<Props> = ({
                       className="w-full px-3 py-2 bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#7C3AED] transition-all"
                     />
                   </div>
-                  <button onClick={handleApplyPrice} disabled={priceBusy} className="px-3 py-2 rounded-xl bg-gradient-to-r from-[#7C3AED] to-[#DB2777] text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60">
-                    <TrendingUp className="w-3.5 h-3.5" /> {priceBusy ? 'Applying...' : 'Set Price for All Users'}
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#6B7280] mb-1">₦ per XENA</label>
+                    <input
+                      value={ngnRateInput}
+                      onChange={(e) => setNgnRateInput(e.target.value)}
+                      type="number"
+                      step="any"
+                      min="0"
+                      placeholder="1500"
+                      className="w-full px-3 py-2 bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#7C3AED] transition-all"
+                    />
+                  </div>
+                  <button onClick={handleApplyPrice} disabled={priceBusy} className="px-3 py-2 sm:col-span-2 rounded-xl bg-gradient-to-r from-[#7C3AED] to-[#DB2777] text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60">
+                    <TrendingUp className="w-3.5 h-3.5" /> {priceBusy ? 'Applying...' : 'Set Price & Rate for All Users'}
                   </button>
                   <div className="text-right hidden sm:block">
-                    <span className="text-[10px] text-[#9CA3AF]">Currently: <span className="font-mono font-bold text-[#6D28D9]">${xenaPrice.toFixed(4)} / XENA</span></span>
+                    <span className="text-[10px] text-[#9CA3AF]">Now: <span className="font-mono font-bold text-[#6D28D9]">${xenaPrice.toFixed(4)} · ₦{Number(xenaNgnRate || 1500).toLocaleString()}</span></span>
                   </div>
                 </div>
                 {priceError && <p className="text-[10px] font-bold text-red-600 mt-2">{priceError}</p>}
@@ -1258,6 +1688,27 @@ export const AdminPanel: React.FC<Props> = ({
                     </div>
                   ))}
                 </div>
+              </div>
+
+              <div className="bg-white border border-[#EDE9FE] rounded-2xl p-4 shadow-sm">
+                <h3 className="text-sm font-bold text-[#171717] pb-3 border-b border-[#EDE9FE]">Payment Limits (NGN)</h3>
+                <p className="text-[10px] text-[#6B7280] mt-2">Enforced on the client and inside Supabase RPCs — every deposit request and withdrawal request is blocked below these.</p>
+                <div className="grid sm:grid-cols-2 gap-3 mt-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#6B7280] mb-1">Min Deposit</label>
+                    <input type="number" min="0" value={minDepInput} onChange={(e) => setMinDepInput(e.target.value)} placeholder="3000" className="w-full px-3 py-2 bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#7C3AED]" />
+                    <span className="text-[9px] text-[#9CA3AF]">Current: ₦{limits?.min_deposit_ngn?.toLocaleString() ?? 3000}</span>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#6B7280] mb-1">Min Withdrawal</label>
+                    <input type="number" min="0" value={minWdInput} onChange={(e) => setMinWdInput(e.target.value)} placeholder="3000" className="w-full px-3 py-2 bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#7C3AED]" />
+                    <span className="text-[9px] text-[#9CA3AF]">Current: ₦{limits?.min_withdrawal_ngn?.toLocaleString() ?? 3000}</span>
+                  </div>
+                </div>
+                <button onClick={handleApplyLimits} disabled={limitsBusy} className="mt-3 px-3 py-2 rounded-xl bg-gradient-to-r from-[#7C3AED] to-[#DB2777] text-white text-xs font-bold cursor-pointer disabled:opacity-60">
+                  {limitsBusy ? 'Saving...' : 'Save Limits'}
+                </button>
+                {limitsError && <p className="text-[10px] font-bold text-red-600 mt-2">{limitsError}</p>}
               </div>
 
               <div className="bg-white border border-[#EDE9FE] rounded-2xl p-4 shadow-sm">

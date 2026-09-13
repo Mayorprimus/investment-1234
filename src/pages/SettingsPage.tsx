@@ -32,8 +32,13 @@ import {
   Send,
   Headphones,
   Clock3,
+  Wallet,
+  Landmark,
+  Plus,
+  Trash2,
+  CreditCard,
 } from 'lucide-react';
-import { UserProfile } from '../types';
+import { SavedBankDetail, SavedWalletAddress, UserProfile } from '../types';
 import { getSupportConversations, sendSupportMessage, getAuthToken } from '../lib/api';
 
 interface SettingsPageProps {
@@ -74,6 +79,21 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateSecuri
   const [language, setLanguage] = useState('English (UK)');
   const [tz, setTz] = useState('(GMT+01:00) West Africa (Lagos)');
 
+  // Withdrawal destination details (saved locally on the account).
+  const BANKS = ['GTBank', 'Zenith Bank', 'Access Bank', 'UBA', 'First Bank', 'Providus Bank', 'Kuda', 'OPay', 'Moniepoint'];
+  const WALLET_COINS = [
+    { id: 'usdt', label: 'USDT', network: 'TRC20' },
+    { id: 'btc', label: 'BTC', network: 'Bitcoin' },
+    { id: 'sol', label: 'SOL', network: 'Solana' },
+    { id: 'eth', label: 'ETH', network: 'Ethereum' },
+  ];
+  const [savedBank, setSavedBank] = useState<SavedBankDetail>(
+    user.bankDetails?.[0] ?? { bankName: 'GTBank', accountNumber: '', accountName: '' }
+  );
+  const [savedWallets, setSavedWallets] = useState<SavedWalletAddress[]>(user.walletAddresses ?? []);
+  const [walletCoin, setWalletCoin] = useState('usdt');
+  const [walletAddr, setWalletAddr] = useState('');
+
   // Password
   const [currentPw, setCurrentPw] = useState('');
   const [newPw, setNewPw] = useState('');
@@ -112,6 +132,31 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateSecuri
     e.preventDefault();
     if (onUpdateProfile) onUpdateProfile({ name: displayName, email: emailAddr });
     notify('Account information saved successfully.');
+  };
+
+  const handleAddWallet = () => {
+    const addr = walletAddr.trim();
+    if (!addr) { notify('Enter a wallet address first.'); return; }
+    if (savedWallets.some((w) => w.coin === walletCoin)) {
+      setSavedWallets((prev) => prev.map((w) => (w.coin === walletCoin ? { coin: walletCoin, address: addr } : w)));
+    } else {
+      setSavedWallets((prev) => [...prev, { coin: walletCoin, address: addr }]);
+    }
+    setWalletAddr('');
+    notify(`${WALLET_COINS.find((c) => c.id === walletCoin)?.label} address saved.`);
+  };
+
+  const handleSavePayment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!savedBank.accountNumber || savedBank.accountNumber.replace(/\D/g, '').length < 10) {
+      notify('Enter a valid 10-digit account number.');
+      return;
+    }
+    if (!savedBank.accountName.trim()) { notify('Enter the account name.'); return; }
+    if (onUpdateProfile) {
+      onUpdateProfile({ bankDetails: [savedBank], walletAddresses: savedWallets });
+    }
+    notify('Withdrawal payment details saved.');
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -328,7 +373,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateSecuri
 
           {/* ============ ACCOUNT ============ */}
       {activeTab === 'account' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
+        <div className="space-y-6 animate-fade-in">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Personal Information */}
           <form onSubmit={handleSaveAccount} className={`${card} space-y-4`}>
             <div className="flex items-center justify-between pb-3 border-b border-[#EDE9FE]">
@@ -470,6 +516,99 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateSecuri
               className="w-full py-2.5 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] text-white font-bold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
             >
               <KeyRound className="w-3.5 h-3.5" /> Update Password
+            </button>
+          </form>
+          </div>
+
+          {/* Payment & Withdrawal Details */}
+          <form onSubmit={handleSavePayment} className={`${card} space-y-4`}>
+            <div className="pb-3 border-b border-[#EDE9FE]">
+              <h3 className="text-sm font-bold text-[#171717] flex items-center gap-2">
+                <Wallet className="w-4 h-4 text-[#6D28D9]" /> Payment & Withdrawal Details
+              </h3>
+              <p className="text-[11px] text-[#6B7280] mt-0.5">Saved destinations are pre-filled when you request a withdrawal.</p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] font-bold text-[#171717] block mb-1">Bank</label>
+                <select
+                  value={savedBank.bankName}
+                  onChange={(e) => setSavedBank((prev) => ({ ...prev, bankName: e.target.value }))}
+                  className="w-full bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-3 py-2 text-xs font-semibold text-[#171717] focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/20 cursor-pointer"
+                >
+                  {BANKS.map((b) => <option key={b}>{b}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-[#171717] block mb-1">Account Number</label>
+                <input
+                  value={savedBank.accountNumber}
+                  onChange={(e) => setSavedBank((prev) => ({ ...prev, accountNumber: e.target.value.replace(/[^0-9]/g, '').slice(0, 10) }))}
+                  placeholder="0123456789"
+                  className="w-full bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-3 py-2 text-xs font-mono font-semibold text-[#171717] focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/20 focus:border-[#7C3AED]"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-[11px] font-bold text-[#171717] block mb-1">Account Name</label>
+              <input
+                value={savedBank.accountName}
+                onChange={(e) => setSavedBank((prev) => ({ ...prev, accountName: e.target.value }))}
+                placeholder="Full Name on Account"
+                className="w-full bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-3 py-2 text-xs font-semibold text-[#171717] focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/20 focus:border-[#7C3AED]"
+              />
+            </div>
+
+            <div className="pt-3 border-t border-[#EDE9FE]">
+              <label className="text-[11px] font-bold text-[#171717] block mb-2">Crypto Wallet Addresses</label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <select
+                  value={walletCoin}
+                  onChange={(e) => setWalletCoin(e.target.value)}
+                  className="sm:w-36 bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-3 py-2 text-xs font-semibold text-[#171717] focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/20 cursor-pointer"
+                >
+                  {WALLET_COINS.map((c) => <option key={c.id} value={c.id}>{c.label} · {c.network}</option>)}
+                </select>
+                <input
+                  value={walletAddr}
+                  onChange={(e) => setWalletAddr(e.target.value)}
+                  placeholder={`Paste ${WALLET_COINS.find((c) => c.id === walletCoin)?.label} address`}
+                  className="flex-1 bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-3 py-2 text-xs font-mono font-semibold text-[#171717] focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/20 focus:border-[#7C3AED]"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddWallet}
+                  className="px-3 py-2 rounded-xl bg-purple-50 text-[#7C3AED] text-xs font-bold border border-purple-100 hover:bg-purple-100 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add
+                </button>
+              </div>
+              {savedWallets.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {savedWallets.map((w) => (
+                    <span key={w.coin} className="inline-flex items-center gap-1.5 bg-[#F8F7FC] border border-[#EDE9FE] rounded-lg px-2.5 py-1.5">
+                      <CreditCard className="w-3 h-3 text-[#6D28D9]" />
+                      <b className="text-[10px] text-[#171717]">{WALLET_COINS.find((c) => c.id === w.coin)?.label || String(w.coin).toUpperCase()}</b>
+                      <span className="text-[10px] font-mono text-[#6B7280] max-w-[160px] truncate">{w.address}</span>
+                      <button
+                        type="button"
+                        onClick={() => { setSavedWallets((prev) => prev.filter((x) => x.coin !== w.coin)); notify(`${String(w.coin).toUpperCase()} address removed.`); }}
+                        className="text-red-400 hover:text-red-600 cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white font-bold text-xs hover:shadow-[0_4px_16px_rgba(109,40,217,0.3)] transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Save className="w-3.5 h-3.5" /> Save Payment Details
             </button>
           </form>
         </div>
