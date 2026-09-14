@@ -357,6 +357,15 @@ export async function replaceAnnouncements(items: any[]): Promise<{ ok: boolean;
   }
 }
 
+export async function replacePromos(items: any[]): Promise<{ ok: boolean; error?: string; promos?: any[] }> {
+  try {
+    const res = await callRpc<any>('admin_replace_promos', { items });
+    return res?.ok ? { ok: true, promos: res.promos } : { ok: false, error: res?.error || 'Unable to update promo codes.' };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Network error.' };
+  }
+}
+
 // ---------- Admin: Delete User Account ----------
 export async function deleteUserAccount(targetEmail: string): Promise<{ ok: boolean; error?: string }> {
   try {

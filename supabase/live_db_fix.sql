@@ -17,6 +17,7 @@ begin
   if u is null then return jsonb_build_object('ok', false, 'error', 'Not authenticated'); end if;
   update public.profiles set
     notifications = coalesce(payload->'notifications', notifications),
+    kyc_tier = coalesce(payload->>'kycTier', kyc_tier),
     two_factor_enabled = coalesce((payload->'twoFactorEnabled')::boolean, two_factor_enabled),
     pin_set = coalesce((payload->'pinSet')::boolean, pin_set),
     bank_details = coalesce(payload->'bankDetails', bank_details),
@@ -102,6 +103,69 @@ end $$;
 
 grant execute on function public.redeem_promo_code to authenticated;
 
+-- 2b) ADMIN PROMO CODE SYNC RPC (admin portal promo toggles/deletes update the
+--     server-side redeemable codes in xena_settings 'promos')
+create or replace function public.admin_replace_promos(items jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_promos jsonb;
+begin
+  if not public.is_admin() then return jsonb_build_object('ok', false, 'error', 'Admin access required.'); end if;
+  if items is null or jsonb_typeof(items) <> 'array' then return jsonb_build_object('ok', false, 'error', 'Invalid payload'); end if;
+  select jsonb_agg(jsonb_build_object(
+    'code', upper(coalesce(e->>'code', '')),
+    'rewardXena', coalesce((e->>'rewardXena')::numeric, (e->>'value')::numeric, 0),
+    'label', coalesce(e->>'label', e->>'description', 'Promo Bonus'),
+    'description', coalesce(e->>'description', e->>'label', 'Promo Bonus'),
+    'active', coalesce((e->>'active')::boolean, true)
+  ))
+  from jsonb_array_elements(items) e
+  where coalesce(e->>'code', '') <> ''
+  into v_promos;
+  if v_promos is null then v_promos := '[]'::jsonb; end if;
+  insert into public.xena_settings(key, value) values ('promos', v_promos)
+    on conflict (key) do update set value = excluded.value;
+  return jsonb_build_object('ok', true, 'promos', v_promos);
+end $$;
+
+grant execute on function public.admin_replace_promos to authenticated;
+
+-- 2c) ADMIN ANNOUNCEMENTS + SETTINGS SYNC RPCs (admin portal writes must reach
+--     the public state: announcements table + xena_settings 'flags' key)
+create or replace function public.admin_update_settings(p_flags jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then return jsonb_build_object('ok', false, 'error', 'Admin access required.'); end if;
+  insert into public.xena_settings(key, value) values ('flags', p_flags)
+    on conflict (key) do update set value = excluded.value;
+  return jsonb_build_object('ok', true);
+end $$;
+
+create or replace function public.admin_replace_announcements(items jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then return jsonb_build_object('ok', false, 'error', 'Admin access required.'); end if;
+  if items is null or jsonb_typeof(items) <> 'array' then return jsonb_build_object('ok', false, 'error', 'Invalid payload'); end if;
+  delete from public.announcements;
+  insert into public.announcements (id, title, date, tag, tag_color, summary, action_text, action_id, published_by, published)
+  select
+    coalesce(e->>'id', 'ann-' || substr(gen_random_uuid()::text, 1, 8)),
+    e->>'title',
+    e->>'date',
+    coalesce(e->>'tag', 'News'),
+    coalesce(e->>'tagColor', 'bg-emerald-50 text-[#16A34A] border-emerald-100'),
+    e->>'summary',
+    e->>'actionText',
+    e->>'actionId',
+    'admin12345@gmail.com',
+    coalesce((e->'published')::boolean, true)
+  from jsonb_array_elements(items) as e;
+  return jsonb_build_object('ok', true);
+end $$;
+
+grant execute on function public.admin_update_settings to authenticated;
+grant execute on function public.admin_replace_announcements to authenticated;
+
 
 -- 3) SEED SERVER-SIDE PROMO CODES (safe to re-run)
 insert into public.xena_settings (key, value) values
@@ -164,6 +228,17 @@ where lower(u.email) = 'alex.morgan@xena.fi'
     select 1 from auth.identities i
     where i.user_id = u.id and i.provider = 'email'
   );
+
+-- 5) SYNC ADMIN BLOB PROMO LIST with the server-side redeemable codes so the
+--    admin portal's promo section shows the real, live codes.
+update public.admin_state
+set blob = jsonb_set(blob, '{promos}', '[
+  {"id":"p1","code":"WELCOME50","value":50,"unit":"XENA","used":0,"cap":10000,"active":true},
+  {"id":"p2","code":"XENABONUS","value":25,"unit":"XENA","used":0,"cap":10000,"active":true},
+  {"id":"p3","code":"VIP100","value":100,"unit":"XENA","used":0,"cap":5000,"active":true},
+  {"id":"p4","code":"P2PZERO","value":15,"unit":"XENA","used":0,"cap":10000,"active":true}
+]'::jsonb)
+where id = 1;
 
 -- Done. After running this script:
 --   - Promo code redemption is server-validated (RPC redeem_promo_code)

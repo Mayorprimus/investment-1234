@@ -520,6 +520,7 @@ begin
   -- admin adjustments or admin actions. Client-supplied values are ignored.
   update public.profiles set
     notifications = coalesce(payload->'notifications', notifications),
+    kyc_tier = coalesce(payload->>'kycTier', kyc_tier),
     two_factor_enabled = coalesce((payload->'twoFactorEnabled')::boolean, two_factor_enabled),
     pin_set = coalesce((payload->'pinSet')::boolean, pin_set),
     bank_details = coalesce(payload->'bankDetails', bank_details),
@@ -630,6 +631,33 @@ begin
     coalesce((e->'published')::boolean, true)
   from jsonb_array_elements(items) as e;
   return jsonb_build_object('ok', true);
+end $$;
+
+--
+-- ADMIN: PROMO CODES (keep xena_settings promos in sync with the admin portal)
+--
+
+create or replace function public.admin_replace_promos(items jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_promos jsonb;
+begin
+  if not public.is_admin() then return jsonb_build_object('ok', false, 'error', 'Admin access required.'); end if;
+  if items is null or jsonb_typeof(items) <> 'array' then return jsonb_build_object('ok', false, 'error', 'Invalid payload'); end if;
+  select jsonb_agg(jsonb_build_object(
+    'code', upper(coalesce(e->>'code', '')),
+    'rewardXena', coalesce((e->>'rewardXena')::numeric, (e->>'value')::numeric, 0),
+    'label', coalesce(e->>'label', e->>'description', 'Promo Bonus'),
+    'description', coalesce(e->>'description', e->>'label', 'Promo Bonus'),
+    'active', coalesce((e->>'active')::boolean, true)
+  ))
+  from jsonb_array_elements(items) e
+  where coalesce(e->>'code', '') <> ''
+  into v_promos;
+  if v_promos is null then v_promos := '[]'::jsonb; end if;
+  insert into public.xena_settings(key, value) values ('promos', v_promos)
+    on conflict (key) do update set value = excluded.value;
+  return jsonb_build_object('ok', true, 'promos', v_promos);
 end $$;
 
 --
@@ -1688,6 +1716,7 @@ grant execute on function public.admin_update_limits to authenticated;
 grant execute on function public.admin_update_settings to authenticated;
 grant execute on function public.admin_save_state to authenticated;
 grant execute on function public.admin_replace_announcements to authenticated;
+grant execute on function public.admin_replace_promos to authenticated;
 grant execute on function public.admin_adjust_balance to authenticated;
 grant execute on function public.admin_delete_profile to authenticated;
 

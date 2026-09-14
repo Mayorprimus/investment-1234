@@ -44,7 +44,7 @@ import {
   Inbox,
   RotateCcw,
 } from 'lucide-react';
-import { getSupportConversations, replySupportConversation, resolveSupportConversation } from '../lib/api';
+import { getSupportConversations, replySupportConversation, resolveSupportConversation, replaceAnnouncements, replacePromos, updateAdminSettings } from '../lib/api';
 import type { SupportConversation } from '../types';
 
 interface Props {
@@ -249,8 +249,11 @@ export const AdminPanel: React.FC<Props> = ({
   onUpdateLimits,
 }) => {
   const { maintenanceMode = false, p2pZeroFee = true, withdrawApproval = true } = settings;
-  const updateSettings = (patch: Partial<{ maintenanceMode: boolean; p2pZeroFee: boolean; withdrawApproval: boolean }>) =>
-    setSettings((prev) => ({ ...prev, ...patch }));
+  const updateSettings = (patch: Partial<{ maintenanceMode: boolean; p2pZeroFee: boolean; withdrawApproval: boolean }>) => {
+    const next = { ...settings, ...patch };
+    setSettings(next);
+    updateAdminSettings(next).catch(() => {});
+  };
 
   const [section, setSection] = useState<string>('dashboard');
   const [notice, setNotice] = useState<string | null>(null);
@@ -1470,7 +1473,9 @@ export const AdminPanel: React.FC<Props> = ({
                   <button
                     onClick={() => {
                       if (!newAnnTitle.trim()) return;
-                      setAnnouncements((prev) => [{ id: `ann-${Date.now()}`, title: newAnnTitle, date: 'Just now', tag: newAnnTag || 'Update', tagColor: 'bg-purple-50 text-[#6D28D9] border-purple-100', summary: newAnnSummary || 'New announcement published.', actionText: 'Read More' }, ...prev]);
+                      const next = [{ id: `ann-${Date.now()}`, title: newAnnTitle, date: 'Just now', tag: newAnnTag || 'Update', tagColor: 'bg-purple-50 text-[#6D28D9] border-purple-100', summary: newAnnSummary || 'New announcement published.', actionText: 'Read More' }, ...announcements];
+                      setAnnouncements(next);
+                      replaceAnnouncements(next).catch(() => {});
                       setNewAnnTitle(''); setNewAnnTag(''); setNewAnnSummary(''); setShowNewAnn(false);
                       notify('Announcement published');
                     }}
@@ -1493,8 +1498,8 @@ export const AdminPanel: React.FC<Props> = ({
                       <span className="block text-[10px] text-[#6B7280] mt-0.5 line-clamp-1">{ann.summary}</span>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <button onClick={() => { setAnnouncements((prev) => prev.map((x) => x.id === ann.id ? { ...x, publishedAt: Date.now(), tagColor: ann.tagColor || 'bg-purple-50 text-[#6D28D9] border-purple-100' } : x)); notify('Updated'); }} className="px-2 py-1 rounded-lg bg-[#F8F7FC] text-[#6B7280] text-[10px] font-bold border border-[#EDE9FE] cursor-pointer">Edit</button>
-                      <button onClick={() => { setAnnouncements((prev) => prev.filter((x) => x.id !== ann.id)); notify('Announcement deleted'); }} className="px-2 py-1 rounded-lg bg-red-50 text-red-600 text-[10px] font-bold border border-red-100 cursor-pointer"><Trash2 className="w-3 h-3" /></button>
+                      <button onClick={() => { const next = announcements.map((x) => x.id === ann.id ? { ...x, publishedAt: Date.now(), tagColor: ann.tagColor || 'bg-purple-50 text-[#6D28D9] border-purple-100' } : x); setAnnouncements(next); replaceAnnouncements(next).catch(() => {}); notify('Updated'); }} className="px-2 py-1 rounded-lg bg-[#F8F7FC] text-[#6B7280] text-[10px] font-bold border border-[#EDE9FE] cursor-pointer">Edit</button>
+                      <button onClick={() => { const next = announcements.filter((x) => x.id !== ann.id); setAnnouncements(next); replaceAnnouncements(next).catch(() => {}); notify('Announcement deleted'); }} className="px-2 py-1 rounded-lg bg-red-50 text-red-600 text-[10px] font-bold border border-red-100 cursor-pointer"><Trash2 className="w-3 h-3" /></button>
                     </div>
                   </div>
                 ))}
@@ -1613,13 +1618,21 @@ export const AdminPanel: React.FC<Props> = ({
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <button onClick={() => { setPromos((prev) => prev.map((x) => x.id === p.id ? { ...x, active: !x.active } : x)); notify(`${p.code} ${p.active ? 'deactivated' : 'activated'}`); }} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border cursor-pointer ${p.active ? 'bg-emerald-50 text-[#16A34A] border-emerald-100' : 'bg-[#F8F7FC] text-[#6B7280] border-[#EDE9FE]'}`}>{p.active ? 'Active' : 'Off'}</button>
-                      <button onClick={() => { setPromos((prev) => prev.filter((x) => x.id !== p.id)); notify(`${p.code} deleted`); }} className="px-2 py-1 rounded-lg bg-red-50 text-red-600 text-[10px] font-bold border border-red-100 cursor-pointer"><Trash2 className="w-3 h-3" /></button>
+                      <button onClick={() => { const next = promos.map((x) => x.id === p.id ? { ...x, active: !x.active } : x); setPromos(next); replacePromos(next).catch(() => {}); notify(`${p.code} ${p.active ? 'deactivated' : 'activated'}`); }} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border cursor-pointer ${p.active ? 'bg-emerald-50 text-[#16A34A] border-emerald-100' : 'bg-[#F8F7FC] text-[#6B7280] border-[#EDE9FE]'}`}>{p.active ? 'Active' : 'Off'}</button>
+                      <button onClick={() => { const next = promos.filter((x) => x.id !== p.id); setPromos(next); replacePromos(next).catch(() => {}); notify(`${p.code} deleted`); }} className="px-2 py-1 rounded-lg bg-red-50 text-red-600 text-[10px] font-bold border border-red-100 cursor-pointer"><Trash2 className="w-3 h-3" /></button>
                     </div>
                   </div>
                 ))}
               </div>
-              <button onClick={() => notify('Promo code created')} className="mt-3 px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer"><Plus className="w-3 h-3" /> Create Code</button>
+              <button onClick={() => {
+                const code = window.prompt('Enter the new promo code (e.g. SPRING100)');
+                if (!code || !code.trim()) return;
+                const reward = parseFloat(window.prompt('XENA reward amount for this code', '10') || '10');
+                const next = [{ id: `pr-${Date.now()}`, code: code.trim().toUpperCase(), value: reward, unit: 'XENA', used: 0, cap: 0, active: true }, ...promos];
+                setPromos(next);
+                replacePromos(next).catch(() => {});
+                notify('Promo code created');
+              }} className="mt-3 px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer"><Plus className="w-3 h-3" /> Create Code</button>
             </div>
           )}
 

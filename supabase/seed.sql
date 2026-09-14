@@ -198,9 +198,10 @@ insert into public.admin_state (id, blob) values (1,
       jsonb_build_object('id','s4','user','Grace Okafor','subject','Account frozen — appeal','status','Resolved','priority','Low','time','1 day ago')
     ),
     'promos', jsonb_build_array(
-      jsonb_build_object('id','p1','code','XENA25','value',25,'unit','USD','used',842,'cap',1000,'active',true),
-      jsonb_build_object('id','p2','code','WELCOME10','value',10,'unit','XENA','used',1210,'cap',2500,'active',true),
-      jsonb_build_object('id','p3','code','STAKER20','value',20,'unit','USD','used',320,'cap',500,'active',false)
+      jsonb_build_object('id','p1','code','WELCOME50','value',50,'unit','XENA','used',0,'cap',10000,'active',true),
+      jsonb_build_object('id','p2','code','XENABONUS','value',25,'unit','XENA','used',0,'cap',10000,'active',true),
+      jsonb_build_object('id','p3','code','VIP100','value',100,'unit','XENA','used',0,'cap',5000,'active',true),
+      jsonb_build_object('id','p4','code','P2PZERO','value',15,'unit','XENA','used',0,'cap',10000,'active',true)
     ),
     'audit', jsonb_build_array(
       jsonb_build_object('id','a1','action','Admin login','actor','Super Admin','detail','Signed in from 192.168.1.4','time','2 min ago'),
