@@ -227,6 +227,31 @@ where lower(u.email) = 'alex.morgan@xena.fi'
     where i.user_id = u.id and i.provider = 'email'
   );
 
+-- 4c) FIX NULL TOKEN COLUMNS — manually-seeded auth.users rows often leave
+--     GoTrue token columns NULL (confirmation_token, recovery_token,
+--     email_change, email_change_token_new, etc.). GoTrue scans these as
+--     strings during password login, so NULL causes the 500
+--     "Database error querying schema". Set them to '' (empty string).
+do $$
+declare
+  cols text[] := array[
+    'confirmation_token', 'recovery_token', 'email_change',
+    'email_change_token_new', 'email_change_token_current',
+    'reauthentication_token', 'phone_change', 'phone_change_token',
+    'phone_change_token_new', 'phone_change_token_current'
+  ];
+  c text;
+begin
+  foreach c in array cols loop
+    if exists (
+      select 1 from information_schema.columns
+      where table_schema = 'auth' and table_name = 'users' and column_name = c
+    ) then
+      execute format('update auth.users set %I = '''' where %I is null', c, c);
+    end if;
+  end loop;
+end $$;
+
 -- 5) SYNC ADMIN BLOB PROMO LIST with the server-side redeemable codes so the
 --    admin portal's promo section shows the real, live codes.
 update public.admin_state

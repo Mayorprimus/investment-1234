@@ -12,7 +12,8 @@
 -- the admin portal. Its password is admin12345 (bcrypt-hashed below).
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
-  raw_app_meta_data, raw_user_meta_data, created_at, updated_at, is_sso_user, is_anonymous
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at, is_sso_user, is_anonymous,
+  confirmation_token, recovery_token, email_change, email_change_token_new, email_change_token_current
 ) values (
   '00000000-0000-0000-0000-000000000000',
   gen_random_uuid(),
@@ -22,13 +23,15 @@ insert into auth.users (
   now(),
   '{"provider":"email","providers":["email"]}',
   '{"name":"Administrator"}',
-  now(), now(), false, false
+  now(), now(), false, false,
+  '', '', '', '', ''
 ) on conflict do nothing;
 
 -- SHOWCASE USER — alex.morgan@xena.fi / xena-user-demo
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
-  raw_app_meta_data, raw_user_meta_data, created_at, updated_at, is_sso_user, is_anonymous
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at, is_sso_user, is_anonymous,
+  confirmation_token, recovery_token, email_change, email_change_token_new, email_change_token_current
 ) values (
   '00000000-0000-0000-0000-000000000000',
   gen_random_uuid(),
@@ -38,7 +41,8 @@ insert into auth.users (
   now(),
   '{"provider":"email","providers":["email"]}',
   '{"name":"Alex Morgan"}',
-  now(), now(), false, false
+  now(), now(), false, false,
+  '', '', '', '', ''
 ) on conflict do nothing;
 
 --
