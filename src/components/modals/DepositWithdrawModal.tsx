@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { SavedBankDetail, SavedWalletAddress, Transaction } from '../../types';
-import { flutterwaveInitialize, flutterwaveVerify, cryptoCreateInvoice, createWithdrawalRequest } from '../../lib/api';
+import { flutterwaveInitialize, flutterwaveVerify, cryptoCreateInvoice, cryptoCheckDeposit, createWithdrawalRequest } from '../../lib/api';
 
 interface DepositWithdrawModalProps {
   isOpen: boolean;
@@ -166,6 +166,7 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
 
     setIsSubmitting(true);
     setError(null);
+    // Client-side init via Supabase RPC — no Vercel serverless dependency.
     const res = await flutterwaveInitialize(ngn);
     setIsSubmitting(false);
 
@@ -217,6 +218,40 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
 
     if (!res.ok || !res.invoice) { setError(res.error || 'Unable to create invoice.'); return; }
     setInvoice(res.invoice);
+  };
+
+  const handleCheckPayment = async () => {
+    if (!invoice?.payment_id) { setError('No active payment.'); return; }
+    setIsSubmitting(true);
+    setError(null);
+    const res = await cryptoCheckDeposit(invoice.payment_id);
+    setIsSubmitting(false);
+
+    if (!res.ok) {
+      setError(res.error || 'Unable to check payment.');
+      return;
+    }
+    if (res.status === 'confirmed' || res.status === 'finished') {
+      const xena = res.xena || 0;
+      const newTx: Transaction = {
+        id: `tx-${Date.now().toString().slice(-4)}`,
+        title: 'Crypto Deposit (NOWPayments)',
+        type: 'deposit',
+        amount: xena,
+        unit: 'XENA',
+        status: 'Completed',
+        timestamp: 'Just now',
+        txHash: invoice.payment_id,
+        paymentMethod: `NOWPayments · ${invoice.pay_currency?.toUpperCase()}`,
+        fee: 0,
+      };
+      onSuccess(xena, newTx);
+      showSuccess(`${xena.toLocaleString()} XENA credited from your crypto deposit!`);
+    } else if (res.status === 'waiting' || res.status === 'partially_paid' || res.status === 'confirming') {
+      setError('Payment not confirmed yet. Once your transfer reaches the address, click check again (usually 1-3 confirmations).');
+    } else {
+      setError(`Payment status: ${res.status}. If you think this is wrong, contact support.`);
+    }
   };
 
   // ──────────── NGN WITHDRAWAL ────────────
@@ -509,13 +544,21 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
 
                   <div className="flex items-center gap-2 text-xs text-[#6B7280]">
                     <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>Credited automatically via IPN webhook. Usually takes 1-3 confirmations.</span>
+                    <span>After sending, tap 'Check Payment Status' to confirm and credit your XENA.</span>
                   </div>
 
-                  <button onClick={() => { showSuccess(`Invoice created — send ${invoice.pay_amount} ${invoice.pay_currency?.toUpperCase()} to the address shown.`); }}
-                    className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-[#16A34A] to-[#22C55E] hover:shadow-lg transition-all flex items-center justify-center gap-2">
-                    <Check className="w-4 h-4" /> Done — Track in Activity
+                  {error && (
+                    <div className="flex items-center gap-2 text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-lg p-2.5">
+                      <AlertCircle className="w-4 h-4 shrink-0" /><span>{error}</span>
+                    </div>
+                  )}
+
+                  <button onClick={handleCheckPayment} disabled={isSubmitting}
+                    className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-[#7C3AED] to-[#A855F7] hover:shadow-[0_4px_16px_rgba(109,40,217,0.3)] hover:scale-[1.01] transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                    {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Checking...</> : <><Check className="w-4 h-4" /> Check Payment Status</>}
                   </button>
+
+                  <button onClick={() => { setInvoice(null); resetState(); }} className="w-full py-2 text-xs font-bold text-[#6B7280] hover:text-[#171717] transition-colors">Cancel</button>
                 </div>
               )}
             </div>

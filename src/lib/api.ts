@@ -557,33 +557,31 @@ export async function adminDecideWithdrawal(requestId: string, decision: 'approv
   }
 }
 
-// ---------- Payments (serverless) ----------
-async function postServerless(path: string, body: unknown): Promise<any | null> {
+// ---------- Payments (Supabase RPCs — replaces broken Vercel serverless) ----------
+export async function flutterwaveInitialize(amountNgn: number): Promise<{ ok: boolean; error?: string; reference?: string; txRef?: string; paymentLink?: string; publicKey?: string }> {
   try {
-    const token = await currentAccessToken();
-    const res = await fetch(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, ...(body as object) }),
-    });
-    return await res.json();
-  } catch {
-    return null;
+    const data = await callRpc<any>('client_create_flutterwave_deposit', { p_amount_ngn: amountNgn });
+    if (!data?.ok) return { ok: false, error: data?.error || 'Unable to initialize payment.' };
+    return {
+      ok: true,
+      reference: data.reference,
+      txRef: data.tx_ref,
+      paymentLink: data.payment_link,
+      publicKey: data.public_key,
+    };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Network error.' };
   }
 }
 
-export async function flutterwaveInitialize(amountNgn: number): Promise<{ ok: boolean; error?: string; reference?: string; txRef?: string; paymentLink?: string; publicKey?: string }> {
-  const data = await postServerless('/api/flutterwave/initialize', { amountNgn });
-  if (!data) return { ok: false, error: 'Network error.' };
-  return data?.ok
-    ? { ok: true, reference: data.reference, txRef: data.tx_ref, paymentLink: data.payment_link, publicKey: data.public_key }
-    : { ok: false, error: data?.error || 'Unable to initialize payment.' };
-}
-
 export async function flutterwaveVerify(txRef: string): Promise<{ ok: boolean; error?: string; xena?: number }> {
-  const data = await postServerless('/api/flutterwave/verify', { tx_ref: txRef });
-  if (!data) return { ok: false, error: 'Network error.' };
-  return data?.ok ? { ok: true, xena: Number(data.xena || 0) } : { ok: false, error: data?.error || 'Payment not confirmed.' };
+  try {
+    const data = await callRpc<any>('client_verify_flutterwave_deposit', { p_tx_ref: txRef });
+    if (!data?.ok) return { ok: false, error: data?.error || 'Payment not confirmed.' };
+    return { ok: true, xena: Number(data.xena || 0) };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Network error.' };
+  }
 }
 
 // Legacy aliases for compatibility
@@ -591,9 +589,23 @@ export const paystackInitialize = flutterwaveInitialize;
 export const paystackVerify = flutterwaveVerify;
 
 export async function cryptoCreateInvoice(coin: string, amountUsd: number): Promise<{ ok: boolean; error?: string; invoice?: any }> {
-  const data = await postServerless('/api/crypto/create', { coin, amountUsd });
-  if (!data) return { ok: false, error: 'Network error.' };
-  return data?.ok ? { ok: true, invoice: data } : { ok: false, error: data?.error || 'Unable to create invoice.' };
+  try {
+    const data = await callRpc<any>('client_create_crypto_invoice', { p_coin: coin, p_amount_usd: amountUsd });
+    if (!data?.ok) return { ok: false, error: data?.error || 'Unable to create invoice.' };
+    return { ok: true, invoice: data };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Network error.' };
+  }
+}
+
+export async function cryptoCheckDeposit(paymentId: string): Promise<{ ok: boolean; status?: string; xena?: number; error?: string }> {
+  try {
+    const data = await callRpc<any>('client_check_crypto_deposit', { p_payment_id: paymentId });
+    if (!data?.ok) return { ok: false, status: data?.status, error: data?.error || 'Unable to check payment.' };
+    return { ok: true, status: data?.status || 'waiting', xena: data?.xena != null ? Number(data.xena) : undefined };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Network error.' };
+  }
 }
 
 export { mapVault };
