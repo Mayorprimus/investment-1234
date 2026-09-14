@@ -1,6 +1,6 @@
-export default async function handler(req: Request) {
-  return new Response(JSON.stringify({ ok: true, pong: 'no-deps' }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  });
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+
+export default function handler(req: VercelRequest, res: VercelResponse) {
+  res.setHeader('Content-Type', 'application/json');
+  res.status(200).json({ ok: true, pong: 'no-deps' });
 }
