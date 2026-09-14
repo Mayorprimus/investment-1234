@@ -3,43 +3,9 @@ import { Gift, Sparkles, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-re
 import confetti from 'canvas-confetti';
 
 interface BonusCodeSectionProps {
-  onRedeemBonus: (code: string, amount: number, title: string) => boolean | void;
+  onRedeemBonus: (code: string) => Promise<{ ok: boolean; error?: string; amount?: number; title?: string }> | void;
   redeemedCodes?: string[];
 }
-
-interface BonusDef {
-  code: string;
-  rewardXena: number;
-  label: string;
-  description: string;
-}
-
-const VERIFIED_PROMOS: BonusDef[] = [
-  {
-    code: 'WELCOME50',
-    rewardXena: 50.0,
-    label: '+50.00 XENA',
-    description: 'New Trader Welcome Gift',
-  },
-  {
-    code: 'XENABONUS',
-    rewardXena: 25.0,
-    label: '+25.00 XENA',
-    description: 'Community Trading Booster Voucher',
-  },
-  {
-    code: 'VIP100',
-    rewardXena: 100.0,
-    label: '+100.00 XENA',
-    description: 'VIP Staker Institutional Voucher',
-  },
-  {
-    code: 'P2PZERO',
-    rewardXena: 15.0,
-    label: '+15.00 XENA',
-    description: 'P2P Trading Subsidy & Liquidity Bonus',
-  },
-];
 
 export const BonusCodeSection: React.FC<BonusCodeSectionProps> = ({
   onRedeemBonus,
@@ -53,7 +19,7 @@ export const BonusCodeSection: React.FC<BonusCodeSectionProps> = ({
   } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleRedeem = (codeToRedeem?: string) => {
+  const handleRedeem = async (codeToRedeem?: string) => {
     const rawCode = (codeToRedeem || inputCode).trim().toUpperCase();
     if (!rawCode) {
       setStatusMessage({
@@ -63,41 +29,20 @@ export const BonusCodeSection: React.FC<BonusCodeSectionProps> = ({
       return;
     }
 
-    if (redeemedCodes.includes(rawCode)) {
-      setStatusMessage({
-        type: 'error',
-        text: `Bonus code "${rawCode}" has already been claimed on this account.`,
-      });
-      return;
-    }
-
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      const result = await onRedeemBonus(rawCode);
 
-      // Check predefined codes or custom voucher format
-      const matchedPromo = VERIFIED_PROMOS.find((p) => p.code.toUpperCase() === rawCode);
-
-      let rewardAmount = 0;
-      let title = '';
-
-      if (matchedPromo) {
-        rewardAmount = matchedPromo.rewardXena;
-        title = `Redeemed Promo Code: ${matchedPromo.code}`;
-      } else if (rawCode.startsWith('XENA') || rawCode.startsWith('BONUS') || rawCode.startsWith('GIFT') || rawCode.length >= 6) {
-        // Dynamic voucher code support (e.g. custom vouchers)
-        rewardAmount = 20.0;
-        title = `Redeemed Voucher: ${rawCode}`;
-      } else {
+      if (!result || !result.ok) {
         setStatusMessage({
           type: 'error',
-          text: `Invalid or expired code "${rawCode}". Please verify your voucher code.`,
+          text: result?.error || `Unable to redeem code "${rawCode}". Please verify your voucher code.`,
         });
         return;
       }
 
-      onRedeemBonus(rawCode, rewardAmount, title);
+      const rewardAmount = result.amount ?? 0;
 
       try {
         confetti({
@@ -114,7 +59,9 @@ export const BonusCodeSection: React.FC<BonusCodeSectionProps> = ({
         amount: rewardAmount,
       });
       setInputCode('');
-    }, 450);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

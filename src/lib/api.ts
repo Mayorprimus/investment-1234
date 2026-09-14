@@ -462,6 +462,16 @@ export async function claimYield(investmentId: string): Promise<{ ok: boolean; e
   }
 }
 
+export async function redeemPromoCode(code: string): Promise<{ ok: boolean; error?: string; amount?: number; code?: string; title?: string; label?: string }> {
+  try {
+    const res = await callRpc<any>('redeem_promo_code', { p_code: code });
+    if (!res?.ok) return { ok: false, error: res?.error || 'Unable to redeem code.' };
+    return { ok: true, amount: Number(res.amount || 0), code: res.code, title: res.title, label: res.label };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Network error.' };
+  }
+}
+
 export async function adminRestartInvestment(investmentId: string, note?: string): Promise<{ ok: boolean; error?: string }> {
   return adminInvestmentAction('admin_restart_investment', investmentId, note);
 }

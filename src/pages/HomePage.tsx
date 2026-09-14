@@ -17,7 +17,7 @@ interface HomePageProps {
   transactions: Transaction[];
   p2pOffers: P2POffer[];
   redeemedBonusCodes?: string[];
-  onRedeemBonus?: (code: string, amount: number, title: string) => void;
+  onRedeemBonus?: (code: string) => Promise<{ ok: boolean; error?: string; amount?: number; title?: string }> | void;
   onOpenDeposit: () => void;
   onOpenWithdraw: () => void;
   onQuickAction: (action: 'buy' | 'sell' | 'deposit' | 'withdraw' | 'send' | 'receive' | 'p2p' | 'invest') => void;

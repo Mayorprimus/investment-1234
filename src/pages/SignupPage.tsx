@@ -136,7 +136,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateTab, onSignupS
             {[
               { icon: ShieldCheck, text: 'Bank-grade KYC & 2FA in under 2 minutes' },
               { icon: Zap, text: 'Instant, 0% fee P2P trading powered by escrow' },
-              { icon: Gift, text: '$25 XENA bonus + 0.5% trading rebate on signup' },
+              { icon: Gift, text: '₦1,500 NGN or $10 USDT deposit bonus — make a deposit to claim it' },
             ].map(({ icon: Icon, text }) => (
               <div key={text} className="flex items-center gap-2.5 text-xs text-purple-50">
                 <span className="w-6 h-6 rounded-lg bg-white/10 border border-white/25 flex items-center justify-center shrink-0">
@@ -191,12 +191,12 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateTab, onSignupS
 
               <div className="grid grid-cols-2 gap-2 py-1.5 px-3 rounded-xl bg-purple-50/80 border border-purple-100">
                 <div className="text-center">
-                  <p className="text-[13px] font-extrabold text-[#171717]">$25 Bonus</p>
-                  <p className="text-[10px] font-semibold text-[#6B7280]">On first deposit</p>
+                  <p className="text-[13px] font-extrabold text-[#171717]">₦1,500 NGN Bonus</p>
+                  <p className="text-[10px] font-semibold text-[#6B7280]">Make a deposit to claim</p>
                 </div>
                 <div className="text-center border-l border-purple-100">
-                  <p className="text-[13px] font-extrabold text-[#171717]">0% Fees</p>
-                  <p className="text-[10px] font-semibold text-[#6B7280]">First 30 days</p>
+                  <p className="text-[13px] font-extrabold text-[#171717]">$10 USDT Bonus</p>
+                  <p className="text-[10px] font-semibold text-[#6B7280]">Make a deposit to claim</p>
                 </div>
               </div>
 
@@ -321,7 +321,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateTab, onSignupS
                   {loading ? (
                     <><Loader2 className="w-4 h-4 animate-spin" /> Creating secure account...</>
                   ) : (
-                    <>Claim $25 Bonus & Create Account <ArrowRight className="w-4 h-4" /></>
+                    <>Create Account <ArrowRight className="w-4 h-4" /></>
                   )}
                 </button>
               </form>
@@ -389,7 +389,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateTab, onSignupS
 
               <div className="mt-4 p-3 rounded-xl bg-purple-50/70 border border-purple-100 text-[10px] text-[#6B7280] flex items-start gap-2">
                 <Sparkles className="w-3.5 h-3.5 text-[#6D28D9] shrink-0 mt-0.5" />
-                <span>Your account ships with a <strong className="text-[#6D28D9]">$25 XENA signup bonus</strong> — claim it on your first deposit.</span>
+                <span>Make your first deposit to claim your welcome bonus: <strong className="text-[#6D28D9]">₦1,500 worth of XENA</strong> on a NGN deposit, or a <strong className="text-[#6D28D9]">$10 XENA bonus</strong> on a USDT (crypto) deposit.</span>
               </div>
 
               <button

@@ -514,15 +514,14 @@ returns jsonb language plpgsql security definer set search_path = public as $$
 declare u uuid := auth.uid();
 begin
   if u is null then return jsonb_build_object('ok', false, 'error', 'Not authenticated'); end if;
+  -- Security: user-writable fields are strictly whitelisted. Balances,
+  -- transactions, redeemed bonus codes, KYC tier and verified-account counts
+  -- are SERVER-OWNED and can only change via deposits, promo redemption,
+  -- admin adjustments or admin actions. Client-supplied values are ignored.
   update public.profiles set
-    balances = coalesce(payload->'balances', balances),
-    transactions = coalesce(payload->'transactions', transactions),
     notifications = coalesce(payload->'notifications', notifications),
-    redeemed_bonus_codes = coalesce(payload->'redeemedBonusCodes', redeemed_bonus_codes),
-    kyc_tier = coalesce(payload->>'kycTier', kyc_tier),
     two_factor_enabled = coalesce((payload->'twoFactorEnabled')::boolean, two_factor_enabled),
     pin_set = coalesce((payload->'pinSet')::boolean, pin_set),
-    verified_accounts_count = coalesce((payload->'verifiedAccountsCount')::integer, verified_accounts_count),
     bank_details = coalesce(payload->'bankDetails', bank_details),
     wallet_addresses = coalesce(payload->'walletAddresses', wallet_addresses),
     name = coalesce(payload->>'name', name),
@@ -1573,6 +1572,80 @@ begin
 end $$;
 
 --
+-- PROMO CODE REDEMPTION (server-validated, one claim per account per code)
+-- Codes are defined in xena_settings key 'promos' as a jsonb array of
+-- {code, rewardXena, label, description, active}. Unknown codes are rejected.
+--
+
+create or replace function public.redeem_promo_code(p_code text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  u uuid := auth.uid();
+  v_code text;
+  v_promos jsonb;
+  v_promo jsonb;
+  v_reward numeric;
+  v_label text;
+  v_used boolean := false;
+  tx jsonb;
+  notif jsonb;
+begin
+  if u is null then return jsonb_build_object('ok', false, 'error', 'Not authenticated'); end if;
+  v_code := upper(btrim(coalesce(p_code, '')));
+  if v_code = '' then return jsonb_build_object('ok', false, 'error', 'Please enter a bonus or voucher code to redeem.'); end if;
+
+  select value into v_promos from public.xena_settings where key = 'promos';
+  if v_promos is null then return jsonb_build_object('ok', false, 'error', 'No bonus codes are available right now.'); end if;
+
+  select e into v_promo
+  from jsonb_array_elements(v_promos) e
+  where upper(e->>'code') = v_code and coalesce((e->>'active')::boolean, true)
+  limit 1;
+
+  if v_promo is null then return jsonb_build_object('ok', false, 'error', 'Invalid or expired code "' || v_code || '". Please verify your voucher code.'); end if;
+
+  v_reward := coalesce((v_promo->>'rewardXena')::numeric, 0);
+  v_label := coalesce(v_promo->>'label', v_promo->>'description', 'Promo Bonus');
+  if v_reward <= 0 then return jsonb_build_object('ok', false, 'error', 'Invalid or expired code "' || v_code || '".'); end if;
+
+  select true into v_used from public.profiles where id = u and redeemed_bonus_codes @> to_jsonb(v_code)::jsonb;
+  if v_used then return jsonb_build_object('ok', false, 'error', 'Bonus code "' || v_code || '" has already been claimed on this account.'); end if;
+
+  tx := jsonb_build_object(
+    'id', 'tx-promo-' || substr(gen_random_uuid()::text, 1, 8),
+    'title', 'Redeemed Promo Code: ' || v_code,
+    'type', 'yield',
+    'amount', v_reward,
+    'unit', 'XENA',
+    'status', 'Completed',
+    'timestamp', 'Just now',
+    'paymentMethod', 'Promo Code',
+    'counterparty', 'XENA Community Reward Desk',
+    'fee', 0
+  );
+  notif := jsonb_build_object(
+    'id', 'notif-promo-' || substr(gen_random_uuid()::text, 1, 8),
+    'title', '🎁 Bonus Voucher Claimed!',
+    'message', '+' || v_reward::text || ' XENA has been credited to your available balance via promo code ' || v_code || '.',
+    'timestamp', 'Just now', 'read', false, 'type', 'transaction'
+  );
+
+  update public.profiles set
+    balances = jsonb_set(
+      jsonb_set(balances, '{availableXena}', ((balances->>'availableXena')::numeric + v_reward)::numeric::text::jsonb),
+      '{totalBalance}',
+      ((balances->>'totalBalance')::numeric + v_reward)::numeric::text::jsonb
+    ),
+    transactions = jsonb_build_array(tx) || transactions,
+    notifications = jsonb_build_array(notif) || notifications,
+    redeemed_bonus_codes = redeemed_bonus_codes || to_jsonb(v_code),
+    updated_at = now()
+  where id = u;
+
+  return jsonb_build_object('ok', true, 'amount', v_reward, 'code', v_code, 'title', 'Redeemed Promo Code: ' || v_code, 'label', v_label);
+end $$;
+
+--
 -- GRANTS
 --
 
@@ -1593,6 +1666,7 @@ grant execute on function public.get_public_state to anon, authenticated;
 grant execute on function public.get_my_state to authenticated;
 grant execute on function public.admin_get_state to authenticated;
 grant execute on function public.save_account_profile to authenticated;
+grant execute on function public.redeem_promo_code to authenticated;
 grant execute on function public.is_admin to authenticated;
 grant execute on function public.current_email to anon, authenticated;
 

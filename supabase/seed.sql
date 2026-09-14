@@ -118,7 +118,13 @@ insert into public.xena_settings (key, value) values
   ('xena_ngn_rate', '{"ngnRate": 1500}'),
   ('flags',  '{"maintenanceMode": false, "p2pZeroFee": true, "withdrawApproval": true}'),
   ('limits', '{"min_deposit_ngn": 3000, "min_withdrawal_ngn": 3000}'),
-  ('escrow', '{"bank": "Providus Bank", "accountName": "XENA Nigeria Escrow Ltd", "accountNumber": "30-8821-4490", "sortCode": "101", "fee": 500}')
+  ('escrow', '{"bank": "Providus Bank", "accountName": "XENA Nigeria Escrow Ltd", "accountNumber": "30-8821-4490", "sortCode": "101", "fee": 500}'),
+  ('promos', jsonb_build_array(
+    jsonb_build_object('code', 'WELCOME50', 'rewardXena', 50, 'label', 'New Trader Welcome Gift', 'description', 'New Trader Welcome Gift', 'active', true),
+    jsonb_build_object('code', 'XENABONUS', 'rewardXena', 25, 'label', 'Community Trading Booster Voucher', 'description', 'Community Trading Booster Voucher', 'active', true),
+    jsonb_build_object('code', 'VIP100', 'rewardXena', 100, 'label', 'VIP Staker Institutional Voucher', 'description', 'VIP Staker Institutional Voucher', 'active', true),
+    jsonb_build_object('code', 'P2PZERO', 'rewardXena', 15, 'label', 'P2P Trading Subsidy & Liquidity Bonus', 'description', 'P2P Trading Subsidy & Liquidity Bonus', 'active', true)
+  ))
 on conflict (key) do update set value = excluded.value;
 
 --

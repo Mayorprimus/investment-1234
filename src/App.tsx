@@ -33,7 +33,7 @@ import {
   SEED_DEPOSITS,
   SEED_REFERRALS,
 } from './pages/AdminPanel';
-import { getState, saveState, registerAccount, loginAccount, saveAccount, changeAccountPassword, getAuthToken, adjustUserBalance, submitP2POffer, approveP2POffer, rejectP2POffer, submitP2PPayment, approveP2PPayment, rejectP2PPayment, setXenaPrice, deleteUserAccount, stakeVault, claimYield, getMyState, moveP2POffer, updateLimits, adminRestartInvestment, adminCancelInvestment, adminPayoutInvestment, adminPayoutAllVaults, adminUpdateVault, adminAddVault, adminDeleteVault, adminDecideWithdrawal, logout } from './lib/api';
+import { getState, saveState, registerAccount, loginAccount, saveAccount, changeAccountPassword, getAuthToken, adjustUserBalance, submitP2POffer, approveP2POffer, rejectP2POffer, submitP2PPayment, approveP2PPayment, rejectP2PPayment, setXenaPrice, deleteUserAccount, stakeVault, claimYield, getMyState, moveP2POffer, updateLimits, adminRestartInvestment, adminCancelInvestment, adminPayoutInvestment, adminPayoutAllVaults, adminUpdateVault, adminAddVault, adminDeleteVault, adminDecideWithdrawal, redeemPromoCode, logout } from './lib/api';
 import { sb, mapProfileToAccount } from './lib/supabase';
 
 // Layout Components
@@ -64,6 +64,7 @@ import { InvestmentDetailModal } from './components/modals/InvestmentDetailModal
 import { SecurityModal } from './components/modals/SecurityModal';
 import { SearchModal } from './components/SearchModal';
 import { NotificationsDrawer } from './components/NotificationsDrawer';
+import { WelcomeModal } from './components/modals/WelcomeModal';
 
 export default function App() {
   // App Global State
@@ -135,6 +136,7 @@ export default function App() {
 
   const [securityModalOpen, setSecurityModalOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   // Boot: load public state, restore any existing Supabase session, then pull
@@ -674,7 +676,14 @@ verifiedAccountsCount: user.verifiedAccountsCount,
     setP2PModalOpen(true);
   };
 
-  const handleRedeemBonus = (code: string, amount: number, title: string) => {
+  const handleRedeemBonus = async (code: string): Promise<{ ok: boolean; error?: string; amount?: number; title?: string }> => {
+    const result = await redeemPromoCode(code);
+    if (!result.ok) {
+      return { ok: false, error: result.error || 'Unable to redeem code. Please try again.' };
+    }
+    const amount = result.amount || 0;
+    const title = result.title || `Bonus Code Claimed (${code})`;
+
     setBalances((prev) => {
       const newAvailable = prev.availableXena + amount;
       const newTotal = (prev.totalBalance || prev.totalXena) + amount;
@@ -688,9 +697,9 @@ verifiedAccountsCount: user.verifiedAccountsCount,
 
     const newTx: Transaction = {
       id: `TX-BONUS-${Date.now().toString().slice(-4)}`,
-      title: title || `Bonus Code Claimed (${code})`,
+      title,
       type: 'yield',
-      amount: amount,
+      amount,
       unit: 'XENA',
       timestamp: 'Just now',
       status: 'Completed',
@@ -710,6 +719,8 @@ verifiedAccountsCount: user.verifiedAccountsCount,
     setNotifications((prev) => [newNotification, ...prev]);
 
     setRedeemedBonusCodes((prev) => (prev.includes(code) ? prev : [...prev, code]));
+
+    return { ok: true, amount, title };
   };
 
   const handleSelectPlan = (plan: InvestmentPlan) => {
@@ -861,6 +872,7 @@ verifiedAccountsCount: user.verifiedAccountsCount,
     if (result.account) {
       applyAccount(result.account);
       setAuthed(true);
+      setWelcomeOpen(true);
     }
     return { ok: true };
   };
@@ -1249,6 +1261,17 @@ verifiedAccountsCount: user.verifiedAccountsCount,
         notifications={notifications}
         onMarkAllRead={handleMarkAllNotificationsRead}
         onClearAll={handleClearAllNotifications}
+      />
+
+      <WelcomeModal
+        isOpen={welcomeOpen}
+        onClose={() => setWelcomeOpen(false)}
+        firstName={user.name.split(' ')[0] || 'onboard'}
+        onDeposit={() => {
+          setWelcomeOpen(false);
+          setDepositWithdrawTab('deposit');
+          setDepositWithdrawOpen(true);
+        }}
       />
     </div>
   );
