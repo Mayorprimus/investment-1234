@@ -1606,9 +1606,6 @@ end $$;
 -- payment providers directly.
 --
 create extension if not exists http with schema extensions;
--- The Postgres http extension defaults to a 1s timeout; payment APIs can be
--- slower, so raise it for the whole database.
-alter role postgres set http.timeout_msec = 20000;
 
 drop table if exists public.payment_secrets;
 create table public.payment_secrets (
@@ -1642,6 +1639,7 @@ declare
   v_data jsonb;
   v_link text;
 begin
+  perform set_config('http.timeout_msec', '20000', true);
   if u is null then return jsonb_build_object('ok', false, 'error', 'Not authenticated'); end if;
   select email, coalesce(name, 'XENA User') into v_email, v_name from public.profiles where id = u;
   if v_email is null then return jsonb_build_object('ok', false, 'error', 'Unknown user.'); end if;
@@ -1703,6 +1701,7 @@ declare
   v_rate numeric;
   v_xena numeric;
 begin
+  perform set_config('http.timeout_msec', '20000', true);
   if u is null then return jsonb_build_object('ok', false, 'error', 'Not authenticated'); end if;
   if p_tx_ref is null or p_tx_ref = '' then
     return jsonb_build_object('ok', false, 'error', 'Missing transaction reference.');
@@ -1761,6 +1760,7 @@ declare
   v_inv jsonb;
   v_ref text;
 begin
+  perform set_config('http.timeout_msec', '20000', true);
   if u is null then return jsonb_build_object('ok', false, 'error', 'Not authenticated'); end if;
   v_pay_currency := case lower(p_coin)
     when 'usdt' then 'usdttrc20'
@@ -1829,6 +1829,7 @@ declare
   v_price numeric;
   v_xena numeric;
 begin
+  perform set_config('http.timeout_msec', '20000', true);
   if u is null then return jsonb_build_object('ok', false, 'error', 'Not authenticated'); end if;
   if p_payment_id is null or p_payment_id = '' then
     return jsonb_build_object('ok', false, 'error', 'Missing payment id.');
