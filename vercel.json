@@ -3,15 +3,16 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/flutterwave/initialize.ts": { "maxDuration": 30 },
-    "api/flutterwave/verify.ts": { "maxDuration": 30 },
-    "api/flutterwave/webhook.ts": { "maxDuration": 30 },
-    "api/crypto/create.ts": { "maxDuration": 30 },
-    "api/crypto/ipn.ts": { "maxDuration": 30 },
-    "api/auth/confirm.ts": { "maxDuration": 30 },
-    "api/admin/reset-password.ts": { "maxDuration": 30 },
-    "api/delete-user.ts": { "maxDuration": 30 },
-    "api/cron/accrue.ts": { "maxDuration": 30 }
+    "api/flutterwave/initialize.ts": { "runtime": "nodejs20.x", "maxDuration": 30 },
+    "api/flutterwave/verify.ts": { "runtime": "nodejs20.x", "maxDuration": 30 },
+    "api/flutterwave/webhook.ts": { "runtime": "nodejs20.x", "maxDuration": 30 },
+    "api/crypto/create.ts": { "runtime": "nodejs20.x", "maxDuration": 30 },
+    "api/crypto/ipn.ts": { "runtime": "nodejs20.x", "maxDuration": 30 },
+    "api/auth/confirm.ts": { "runtime": "nodejs20.x", "maxDuration": 30 },
+    "api/admin/reset-password.ts": { "runtime": "nodejs20.x", "maxDuration": 30 },
+    "api/delete-user.ts": { "runtime": "nodejs20.x", "maxDuration": 30 },
+    "api/cron/accrue.ts": { "runtime": "nodejs20.x", "maxDuration": 30 },
+    "api/ping.ts": { "runtime": "nodejs20.x", "maxDuration": 30 }
   },
   "routes": [
     { "handle": "filesystem" },
