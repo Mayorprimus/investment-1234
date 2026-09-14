@@ -184,7 +184,7 @@ on conflict (key) do update set value = excluded.value;
 -- This fixes admin12345@gmail.com and alex.morgan@xena.fi.
 
 -- 4a) admin12345@gmail.com (auth.users id = 0edf38b2-ccf7-4d80-a5c1-4990ac1c2156)
-insert into auth.identities (provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at, email)
+insert into auth.identities (provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
 select
   u.id::text,
   u.id,
@@ -197,8 +197,7 @@ select
   'email',
   now(),
   now(),
-  now(),
-  u.email
+  now()
 from auth.users u
 where lower(u.email) = 'admin12345@gmail.com'
   and not exists (
@@ -207,7 +206,7 @@ where lower(u.email) = 'admin12345@gmail.com'
   );
 
 -- 4b) alex.morgan@xena.fi (auth.users id = 1410b37d-5495-41cd-852c-fa81304af8dd)
-insert into auth.identities (provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at, email)
+insert into auth.identities (provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
 select
   u.id::text,
   u.id,
@@ -220,8 +219,7 @@ select
   'email',
   now(),
   now(),
-  now(),
-  u.email
+  now()
 from auth.users u
 where lower(u.email) = 'alex.morgan@xena.fi'
   and not exists (
