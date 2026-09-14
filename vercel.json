@@ -15,9 +15,8 @@
     "api/cron/accrue.ts": { "maxDuration": 15 },
     "api/ping.ts": { "maxDuration": 15 }
   },
-  "routes": [
-    { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/index.html" }
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [
     { "path": "/api/cron/accrue", "schedule": "0 0 * * *" }
