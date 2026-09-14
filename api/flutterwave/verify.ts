@@ -9,7 +9,7 @@ export default async function handler(req: Request) {
     if (!token) return json({ ok: false, error: 'Not authenticated.' }, 401);
     if (!txRef) return json({ ok: false, error: 'Missing tx_ref/reference.' }, 400);
 
-    const sb = getServiceClient();
+    const sb = await getServiceClient();
     const { data: u, error: uErr } = await sb.auth.getUser(token);
     if (uErr || !u?.user) return json({ ok: false, error: 'Invalid session.' }, 401);
 

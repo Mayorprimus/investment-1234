@@ -22,12 +22,12 @@ export default async function handler(req: Request) {
     if (!SUPPORTED_COINS[coin]) return json({ ok: false, error: 'Unsupported coin.' }, 400);
     if (!(amountUsd > 0)) return json({ ok: false, error: 'Invalid amount.' }, 400);
 
-    const sb = getServiceClient();
+    const sb = await getServiceClient();
     const { data: u, error: uErr } = await sb.auth.getUser(token);
     if (uErr || !u?.user) return json({ ok: false, error: 'Invalid session.' }, 401);
     const email = String(u.user.email || '').trim().toLowerCase();
 
-    const { data: limits } = await sb.from('xena_settings').select('limits').single();
+    const { data: limits } = await sb.from('xena_settings').select('value').eq('key', 'limits').maybeSingle();
     const minUsd = Number(limits?.limits?.minDepositUsd || 10);
     if (amountUsd < minUsd) return json({ ok: false, error: `Minimum deposit is $${minUsd}.` }, 400);
 

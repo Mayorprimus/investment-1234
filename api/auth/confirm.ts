@@ -9,7 +9,7 @@ export default async function handler(req: Request) {
     const email = String(body?.email || '').trim().toLowerCase();
     if (!email) return json({ ok: false, error: 'Missing email.' }, 400);
 
-    const sb = getServiceClient();
+    const sb = await getServiceClient();
     const { data: page, error } = await sb.auth.admin.listUsers({ page: 1, perPage: 1000 });
     if (error) return json({ ok: false, error: error.message }, 500);
     const user = page.users.find((u) => u.email?.toLowerCase() === email);

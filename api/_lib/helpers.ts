@@ -1,9 +1,19 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+type SupabaseClient = import('@supabase/supabase-js').SupabaseClient;
 
-export function getServiceClient(): SupabaseClient {
+let supabaseModule: typeof import('@supabase/supabase-js') | null = null;
+
+async function loadSupabase() {
+  if (!supabaseModule) {
+    supabaseModule = await import('@supabase/supabase-js');
+  }
+  return supabaseModule;
+}
+
+export async function getServiceClient(): Promise<SupabaseClient> {
   const url = process.env.SUPABASE_URL || '';
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
   if (!url || !key) throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.');
+  const { createClient } = await loadSupabase();
   return createClient(url, key, { auth: { persistSession: false }, db: { schema: 'public' } });
 }
 
@@ -34,9 +44,10 @@ export function handleError(e: unknown): Response {
   return json({ ok: false, error: e instanceof Error ? e.message : 'Unexpected error.' }, 500);
 }
 
-export async function requireAdminToken(token: string): Promise<boolean> {
+export async function requireAdminToken(req: Request, body: any): Promise<boolean> {
+  const token = String(body?.token || '');
   if (!token) return false;
-  const sb = getServiceClient();
+  const sb = await getServiceClient();
   const { data, error } = await sb.auth.getUser(token);
   if (error || !data?.user) return false;
   const { data: profile } = await sb

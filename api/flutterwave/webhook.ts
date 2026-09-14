@@ -23,7 +23,7 @@ export default async function handler(req: Request) {
     const amountNgn = Number(tx.amount || 0);
     const email = String(tx.customer?.email || '').trim().toLowerCase();
 
-    const sb = getServiceClient();
+    const sb = await getServiceClient();
     const { data: existing } = await sb.from('payments').select('id').eq('reference', reference).maybeSingle();
     if (existing) return json({ ok: true }, 200);
 

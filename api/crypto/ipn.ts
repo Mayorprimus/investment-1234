@@ -38,7 +38,7 @@ export default async function handler(req: Request) {
 
     if (!['confirmed', 'finished'].includes(status)) return json({ ok: true });
 
-    const sb = getServiceClient();
+    const sb = await getServiceClient();
     const { data: pay } = await sb.from('payments').select('*').eq('reference', paymentId).maybeSingle();
     if (!pay) return json({ ok: true });
 

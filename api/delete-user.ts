@@ -6,9 +6,10 @@ export default async function handler(req: Request) {
   try {
     if (req.method !== 'POST') return json({ ok: false, error: 'Method not allowed.' }, 405);
     const body = await readJsonBody(req);
-    const token = await requireAdminToken(req, body);
+    const isAdmin = await requireAdminToken(req, body);
+    if (!isAdmin) return json({ ok: false, error: 'Admins only.' }, 403);
 
-    const sb = getServiceClient();
+    const sb = await getServiceClient();
     const userId = String(body?.userId || '');
     const email = String(body?.email || '').trim().toLowerCase();
     if (!userId && !email) return json({ ok: false, error: 'Provide userId or email.' }, 400);
