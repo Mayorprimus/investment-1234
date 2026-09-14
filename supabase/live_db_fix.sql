@@ -340,7 +340,7 @@ begin
       'meta', jsonb_build_object('user_id', u)
     )::text,
     'application/json',
-    jsonb_build_object('Authorization', 'Bearer ' || v_secret)
+    'Authorization: Bearer ' || v_secret
   );
   v_data := (v_res.content)::jsonb;
   if v_data->>'status' <> 'success' then
@@ -391,7 +391,7 @@ begin
 
   v_res := extensions.http_get(
     'https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=' || p_tx_ref,
-    jsonb_build_object('Authorization', 'Bearer ' || v_secret)
+    'Authorization: Bearer ' || v_secret
   );
   if v_res.status <> 200 then
     return jsonb_build_object('ok', false, 'error', 'Payment not confirmed yet. If you paid, try again in a few seconds.');
@@ -464,7 +464,7 @@ begin
       'cancel_url', 'https://investment-1234.vercel.app/wallet'
     )::text,
     'application/json',
-    jsonb_build_object('x-api-key', v_api_key)
+    'x-api-key: ' || v_api_key
   );
   v_inv := (v_res.content)::jsonb;
   if (v_inv->>'id') is null then
@@ -515,7 +515,7 @@ begin
 
   v_res := extensions.http_get(
     'https://api.nowpayments.io/v1/payment/' || p_payment_id,
-    jsonb_build_object('x-api-key', v_api_key)
+    'x-api-key: ' || v_api_key
   );
   v_st := coalesce((v_res.content)::jsonb->>'payment_status', 'waiting');
   if v_st not in ('confirmed', 'finished') then
@@ -535,6 +535,23 @@ grant execute on function public.client_create_flutterwave_deposit(numeric) to a
 grant execute on function public.client_verify_flutterwave_deposit(text) to authenticated;
 grant execute on function public.client_create_crypto_invoice(text, numeric) to authenticated;
 grant execute on function public.client_check_crypto_deposit(text) to authenticated;
+
+-- 7) CORRECT XENA PRICE to the real market value:
+--    $1 = N1300, and 3 XENA = N1  =>  1 XENA = N0.3333 = $0.0002564
+insert into public.xena_settings(key, value) values
+  ('price', jsonb_build_object('price', 0.0002564)),
+  ('xena_ngn_rate', jsonb_build_object('ngnRate', 0.3333))
+on conflict (key) do update set value = excluded.value;
+-- Re-price every P2P listing so no stale ad price survives.
+update public.p2p_offers set price_per_xena = 0.0002564;
+-- Push the new price + NGN rate into every profile's balances blob so
+-- wallets, holdings, charts and deposit/withdraw conversions match instantly.
+update public.profiles
+  set balances = jsonb_set(
+        jsonb_set(balances, '{currentPrice}', to_jsonb(0.0002564)),
+        '{xenaNgnRate}', to_jsonb(0.3333)),
+      updated_at = now()
+  where balances is not null;
 
 -- Done. After running this script:
 --   - Payments work without Vercel serverless (RPCs call Flutterwave/NOWPayments via the Postgres http extension)

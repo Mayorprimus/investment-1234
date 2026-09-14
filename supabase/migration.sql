@@ -1672,7 +1672,7 @@ begin
       'meta', jsonb_build_object('user_id', u)
     )::text,
     'application/json',
-    jsonb_build_object('Authorization', 'Bearer ' || v_secret)
+    'Authorization: Bearer ' || v_secret
   );
   v_data := (v_res.content)::jsonb;
   if v_data->>'status' <> 'success' then
@@ -1723,7 +1723,7 @@ begin
 
   v_res := extensions.http_get(
     'https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=' || p_tx_ref,
-    jsonb_build_object('Authorization', 'Bearer ' || v_secret)
+    'Authorization: Bearer ' || v_secret
   );
   if v_res.status <> 200 then
     return jsonb_build_object('ok', false, 'error', 'Payment not confirmed yet. If you paid, try again in a few seconds.');
@@ -1796,7 +1796,7 @@ begin
       'cancel_url', 'https://investment-1234.vercel.app/wallet'
     )::text,
     'application/json',
-    jsonb_build_object('x-api-key', v_api_key)
+    'x-api-key: ' || v_api_key
   );
   v_inv := (v_res.content)::jsonb;
   if (v_inv->>'id') is null then
@@ -1847,7 +1847,7 @@ begin
 
   v_res := extensions.http_get(
     'https://api.nowpayments.io/v1/payment/' || p_payment_id,
-    jsonb_build_object('x-api-key', v_api_key)
+    'x-api-key: ' || v_api_key
   );
   v_st := coalesce((v_res.content)::jsonb->>'payment_status', 'waiting');
   if v_st not in ('confirmed', 'finished') then
