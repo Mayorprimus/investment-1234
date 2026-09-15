@@ -32,7 +32,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const email = String(tx.customer?.email || '').trim().toLowerCase();
 
     const sb = await getServiceClient();
-    const { data: existing } = await sb.from('payments').select('id').eq('reference', reference).maybeSingle();
+    const { data: existing } = await sb.from('payments').select('id,status').eq('reference', reference).maybeSingle();
     if (existing && existing.status === 'confirmed') return res.status(200).json({ ok: true });
 
     const { data: rateRow } = await sb.from('xena_settings').select('value').eq('key', 'xena_ngn_rate').maybeSingle();
