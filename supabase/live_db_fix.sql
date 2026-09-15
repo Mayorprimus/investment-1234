@@ -553,8 +553,16 @@ update public.profiles
       updated_at = now()
   where balances is not null;
 
+-- 8) DROP client-side payment RPCs + payment_secrets — payments now go through
+--    Vercel server-side routes (api/*) which keep secrets in Vercel env vars.
+drop function if exists public.client_create_flutterwave_deposit(numeric);
+drop function if exists public.client_verify_flutterwave_deposit(text);
+drop function if exists public.client_create_crypto_invoice(text, numeric);
+drop function if exists public.client_check_crypto_deposit(text);
+drop table if exists public.payment_secrets;
+
 -- Done. After running this script:
---   - Payments work without Vercel serverless (RPCs call Flutterwave/NOWPayments via the Postgres http extension)
+--   - Payments run from Vercel server-side routes (api/*) using secrets in Vercel env vars
 --   - Promo code redemption is server-validated (RPC redeem_promo_code)
 --   - Client can no longer write balances/transactions/redeemed codes via save_account_profile
 --   - Admin login (admin12345@gmail.com / admin12345) should work via Supabase auth

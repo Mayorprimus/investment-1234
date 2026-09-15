@@ -166,7 +166,6 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
 
     setIsSubmitting(true);
     setError(null);
-    // Client-side init via Supabase RPC — no Vercel serverless dependency.
     const res = await flutterwaveInitialize(ngn);
     setIsSubmitting(false);
 

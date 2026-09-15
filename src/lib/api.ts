@@ -557,31 +557,40 @@ export async function adminDecideWithdrawal(requestId: string, decision: 'approv
   }
 }
 
-// ---------- Payments (Supabase RPCs — replaces broken Vercel serverless) ----------
-export async function flutterwaveInitialize(amountNgn: number): Promise<{ ok: boolean; error?: string; reference?: string; txRef?: string; paymentLink?: string; publicKey?: string }> {
+// ---------- Payments (Vercel server-side routes) ----------
+async function postServerless(path: string, body: Record<string, unknown>): Promise<any | null> {
+  const token = await currentAccessToken();
+  if (!token) return { ok: false, error: 'You must be signed in.' };
   try {
-    const data = await callRpc<any>('client_create_flutterwave_deposit', { p_amount_ngn: amountNgn });
-    if (!data?.ok) return { ok: false, error: data?.error || 'Unable to initialize payment.' };
-    return {
-      ok: true,
-      reference: data.reference,
-      txRef: data.tx_ref,
-      paymentLink: data.payment_link,
-      publicKey: data.public_key,
-    };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || 'Network error.' };
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, ...body }),
+    });
+    let data: any = null;
+    try { data = await res.json(); } catch { /* ignore */ }
+    return data || { ok: res.ok };
+  } catch {
+    return { ok: false, error: 'Network error.' };
   }
 }
 
+export async function flutterwaveInitialize(amountNgn: number): Promise<{ ok: boolean; error?: string; reference?: string; txRef?: string; paymentLink?: string; publicKey?: string }> {
+  const data = await postServerless('/api/flutterwave/initialize', { amountNgn });
+  if (!data?.ok) return { ok: false, error: data?.error || 'Unable to initialize payment.' };
+  return {
+    ok: true,
+    reference: data.reference,
+    txRef: data.tx_ref,
+    paymentLink: data.payment_link,
+    publicKey: data.public_key,
+  };
+}
+
 export async function flutterwaveVerify(txRef: string): Promise<{ ok: boolean; error?: string; xena?: number }> {
-  try {
-    const data = await callRpc<any>('client_verify_flutterwave_deposit', { p_tx_ref: txRef });
-    if (!data?.ok) return { ok: false, error: data?.error || 'Payment not confirmed.' };
-    return { ok: true, xena: Number(data.xena || 0) };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || 'Network error.' };
-  }
+  const data = await postServerless('/api/flutterwave/verify', { tx_ref: txRef });
+  if (!data?.ok) return { ok: false, error: data?.error || 'Payment not confirmed.' };
+  return { ok: true, xena: Number(data.xena || 0) };
 }
 
 // Legacy aliases for compatibility
@@ -589,23 +598,15 @@ export const paystackInitialize = flutterwaveInitialize;
 export const paystackVerify = flutterwaveVerify;
 
 export async function cryptoCreateInvoice(coin: string, amountUsd: number): Promise<{ ok: boolean; error?: string; invoice?: any }> {
-  try {
-    const data = await callRpc<any>('client_create_crypto_invoice', { p_coin: coin, p_amount_usd: amountUsd });
-    if (!data?.ok) return { ok: false, error: data?.error || 'Unable to create invoice.' };
-    return { ok: true, invoice: data };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || 'Network error.' };
-  }
+  const data = await postServerless('/api/crypto/create', { coin, amountUsd });
+  if (!data?.ok) return { ok: false, error: data?.error || 'Unable to create invoice.' };
+  return { ok: true, invoice: data };
 }
 
 export async function cryptoCheckDeposit(paymentId: string): Promise<{ ok: boolean; status?: string; xena?: number; error?: string }> {
-  try {
-    const data = await callRpc<any>('client_check_crypto_deposit', { p_payment_id: paymentId });
-    if (!data?.ok) return { ok: false, status: data?.status, error: data?.error || 'Unable to check payment.' };
-    return { ok: true, status: data?.status || 'waiting', xena: data?.xena != null ? Number(data.xena) : undefined };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || 'Network error.' };
-  }
+  const data = await postServerless('/api/crypto/status', { payment_id: paymentId });
+  if (!data?.ok) return { ok: false, status: data?.status, error: data?.error || 'Unable to check payment.' };
+  return { ok: true, status: data?.status || 'waiting', xena: data?.xena != null ? Number(data.xena) : undefined };
 }
 
 export { mapVault };
