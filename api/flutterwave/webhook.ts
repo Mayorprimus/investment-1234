@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getServiceClient, readRawBody } from '../_lib/helpers';
+import { getServiceClient, readRawBody } from '../_lib/helpers.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {

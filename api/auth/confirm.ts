@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getServiceClient, json, readJsonBody, handleError } from '../_lib/helpers';
+import { getServiceClient, json, readJsonBody, handleError } from '../_lib/helpers.js';
 
 // Called right after auth.signUp to auto-confirm the new user — no email
 // confirmation step (instant login).

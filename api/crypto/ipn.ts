@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getServiceClient, requireEnv, readRawBody, handleError } from '../_lib/helpers';
+import { getServiceClient, requireEnv, readRawBody, json, handleError } from '../_lib/helpers.js';
 
 // NOWPayments IPN webhook. Verifies HMAC-SHA512 over the raw body using the
 // IPN secret, then credits only on 'confirmed'/'finished' status.

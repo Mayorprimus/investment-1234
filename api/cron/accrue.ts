@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getServiceClient, json, handleError } from '../_lib/helpers';
+import { getServiceClient, json, handleError } from '../_lib/helpers.js';
 
 // Daily investment accrual trigger, invoked by Vercel Cron. Idempotent: the
 // SQL function only ticks days not yet accrued for active investments.

@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getServiceClient, requireEnv, json, readJsonBody, handleError } from '../_lib/helpers';
+import { getServiceClient, requireEnv, json, readJsonBody, handleError } from '../_lib/helpers.js';
 
 // Client-side poll: checks a NOWPayments payment status and credits once.
 export default async function handler(req: VercelRequest, res: VercelResponse) {

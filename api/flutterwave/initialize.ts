@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import crypto from 'node:crypto';
-import { getServiceClient, requireEnv, getAppUrl, json, readJsonBody, handleError } from '../_lib/helpers';
+import { getServiceClient, requireEnv, getAppUrl, json, readJsonBody, handleError } from '../_lib/helpers.js';
 
 // Creates a Flutterwave payment and records a pending payment row. The
 // secret stays ONLY in Vercel env vars — never sent to the client.

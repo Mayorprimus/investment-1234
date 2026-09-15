@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getServiceClient, requireEnv, getAppUrl, json, readJsonBody, handleError } from '../_lib/helpers';
+import { getServiceClient, requireEnv, getAppUrl, json, readJsonBody, handleError } from '../_lib/helpers.js';
 
 // Creates a NOWPayments invoice for a crypto deposit. Records a pending
 // payment row so the IPN webhook can match and credit idempotently.

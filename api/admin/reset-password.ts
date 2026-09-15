@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getServiceClient, json, readJsonBody, handleError, requireAdminToken } from '../_lib/helpers';
+import { getServiceClient, json, readJsonBody, handleError, requireAdminToken } from '../_lib/helpers.js';
 
 // Admin resets a user's password. New password is written via admin API;
 // the user then logs in with it (instant login, no email confirmation).

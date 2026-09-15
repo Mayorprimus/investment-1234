@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getServiceClient, json, readJsonBody, handleError, requireAdminToken } from '../_lib/helpers';
+import { getServiceClient, json, readJsonBody, handleError, requireAdminToken } from '../_lib/helpers.js';
 
 // Hard-deletes a user account: auth user (cascade removes the profile row),
 // any investments, p2p offers/trades they own are wiped by FK cascade.
