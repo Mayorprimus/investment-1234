@@ -1,9 +1,7 @@
 import crypto from 'node:crypto';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getServiceClient, requireEnv, readRawBody, json, handleError } from '../_lib/helpers.js';
+import { requireEnv, readRawBody, json, handleError, findPendingPayment, updatePendingPayment, creditUser, getSetting } from '../_lib/helpers.js';
 
-// NOWPayments IPN webhook. Verifies HMAC-SHA512 over the raw body using the
-// IPN secret, then credits only on 'confirmed'/'finished' status.
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== 'POST') return json(res, { ok: false, error: 'Method not allowed.' }, 405);
@@ -22,29 +20,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const parsed = JSON.parse(raw);
     const paymentId = String(parsed?.payment_id || parsed?.id || '');
-    const status = String(parsed?.payment_status || parsed?.status || '');
     if (!paymentId) return json(res, { ok: true });
-
+    const status = String(parsed?.payment_status || parsed?.status || '');
     if (!['confirmed', 'finished'].includes(status)) return json(res, { ok: true });
 
-    const sb = await getServiceClient();
-    const { data: pay } = await sb.from('payments').select('*').eq('reference', paymentId).maybeSingle();
+    const pay = await findPendingPayment('nowpayments', paymentId);
     if (!pay) return json(res, { ok: true });
+    if (pay.status === 'confirmed') return json(res, { ok: true });
 
-    const amountFiat = Number(parsed?.fiat_amount || parsed?.price_amount || pay.amount || 0);
+    const amount = Number(parsed?.fiat_amount || parsed?.price_amount || pay.amount || 0);
+    const priceSetting = await getSetting('price');
+    const price = Number(priceSetting?.price ?? 0.0002564);
+    const xena = Math.round((amount / price) * 10000) / 10000;
 
-    const { data: priceRow } = await sb.from('xena_settings').select('value').eq('key', 'price').maybeSingle();
-    const price = Number(priceRow?.value?.price ?? 0.0002564);
-    const xena = Math.round((amountFiat / price) * 10000) / 10000;
-
-    await sb.rpc('credit_payment', {
-      p_reference: paymentId,
-      p_provider: pay.provider || 'nowpayments',
-      p_amount: amountFiat,
-      p_currency: pay.currency || 'USD',
-      p_xena: xena,
-      p_email: pay.email,
-      p_meta: pay.meta || null,
+    await updatePendingPayment(paymentId, { status: 'confirmed', xena });
+    await creditUser(pay.email, xena, {
+      title: 'Crypto Deposit (NOWPayments)',
+      type: 'deposit',
+      paymentMethod: `NOWPayments · ${String(pay.meta?.coin || '').toUpperCase() || 'Crypto'}`,
+      counterparty: 'NOWPayments',
+      notifTitle: 'Crypto Deposit Confirmed',
+      notifMessage: `Your ${String(pay.meta?.coin || '').toUpperCase()} payment was confirmed. ${xena.toLocaleString()} XENA has been credited to your balance.`,
     });
 
     return json(res, { ok: true });

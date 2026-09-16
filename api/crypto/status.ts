@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getServiceClient, requireEnv, json, readJsonBody, handleError } from '../_lib/helpers.js';
+import { requireEnv, json, readJsonBody, handleError, getUserByToken, getSetting, findPendingPayment, updatePendingPayment, creditUser } from '../_lib/helpers.js';
 
-// Client-side poll: checks a NOWPayments payment status and credits once.
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== 'POST') return json(res, { ok: false, error: 'Method not allowed.' }, 405);
@@ -11,18 +10,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!token) return json(res, { ok: false, error: 'Not authenticated.' }, 401);
     if (!paymentId) return json(res, { ok: false, error: 'Missing payment_id.' }, 400);
 
-    const sb = await getServiceClient();
-    const { data: u, error: uErr } = await sb.auth.getUser(token);
-    if (uErr || !u?.user) return json(res, { ok: false, error: 'Invalid session.' }, 401);
+    const user = await getUserByToken(token);
+    if (!user) return json(res, { ok: false, error: 'Invalid session.' }, 401);
 
-    const { data: pay } = await sb.from('payments').select('*').eq('reference', paymentId).maybeSingle();
+    const pay = await findPendingPayment('nowpayments', paymentId);
     if (!pay) return json(res, { ok: false, error: 'Payment not found.' }, 404);
-    if (pay.email?.toLowerCase() !== String(u.user.email || '').toLowerCase()) {
+    if (pay.email?.toLowerCase() !== String(user.email || '').toLowerCase()) {
       return json(res, { ok: false, error: 'This payment belongs to another account.' }, 403);
     }
 
-    if (pay.status === 'confirmed' || pay.status === 'finished') {
-      return json(res, { ok: true, status: pay.status, xena: Number(pay.xena || 0) });
+    if (pay.status === 'confirmed') {
+      return json(res, { ok: true, status: pay.status, xena: Number(pay.xena || 0), duplicate: true });
     }
 
     const apiKey = requireEnv('NOWPAYMENTS_API_KEY');
@@ -37,22 +35,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const amountFiat = Number(data?.fiat_amount || data?.price_amount || pay.amount || 0);
-    const { data: priceRow } = await sb.from('xena_settings').select('value').eq('key', 'price').maybeSingle();
-    const price = Number(priceRow?.value?.price ?? 0.0002564);
+    const priceSetting = await getSetting('price');
+    const price = Number(priceSetting?.price ?? 0.0002564);
     const xena = Math.round((amountFiat / price) * 10000) / 10000;
 
-    const { data: credit, error: creditErr } = await sb.rpc('credit_payment', {
-      p_reference: paymentId,
-      p_provider: 'nowpayments',
-      p_amount: amountFiat,
-      p_currency: 'USD',
-      p_xena: xena,
-      p_email: pay.email,
-      p_meta: pay.meta || null,
+    await updatePendingPayment(paymentId, { status: 'confirmed', xena });
+    await creditUser(pay.email, xena, {
+      title: 'Crypto Deposit (NOWPayments)',
+      type: 'deposit',
+      paymentMethod: `NOWPayments · ${String(pay.meta?.coin || '').toUpperCase() || 'Crypto'}`,
+      counterparty: 'NOWPayments',
+      notifTitle: 'Crypto Deposit Confirmed',
+      notifMessage: `Your ${String(pay.meta?.coin || '').toUpperCase()} payment was confirmed. ${xena.toLocaleString()} XENA has been credited to your balance.`,
     });
-    if (creditErr) return json(res, { ok: false, error: creditErr.message }, 502);
 
-    return json(res, { ok: true, status, xena: Number(credit?.xena ?? xena), duplicate: !!credit?.duplicate });
+    return json(res, { ok: true, status: 'confirmed', xena: Number(xena), duplicate: false });
   } catch (e) {
     return handleError(e, res);
   }

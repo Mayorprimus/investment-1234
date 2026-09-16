@@ -1,119 +1,16 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import fs from 'fs';
-import path from 'path';
-import crypto from 'crypto';
+import { createClient } from '@supabase/supabase-js';
 
-const DATA_DIR = '/tmp/xena-data';
-const DB_FILE = path.join(DATA_DIR, 'db.json');
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DIR, { recursive: true });
-  }
-}
+const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
+  : null;
 
-function loadDb(): any {
-  ensureDataDir();
-  try {
-    if (fs.existsSync(DB_FILE)) {
-      const raw = fs.readFileSync(DB_FILE, 'utf8');
-      return JSON.parse(raw);
-    }
-  } catch {}
-  return getSeedDb();
-}
-
-function saveDb(db: any) {
-  ensureDataDir();
-  const tmp = DB_FILE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(db, null, 2), 'utf8');
-  fs.renameSync(tmp, DB_FILE);
-}
-
-function getSeedDb() {
-  return {
-    users: [],
-    accounts: [],
-    tokens: {},
-    pendingPayments: [],
-    xenaSettings: {
-      limits: { min_deposit_ngn: 3000, minDepositUsd: 10 },
-      xena_ngn_rate: { ngnRate: 0.3333 },
-      price: { price: 0.0002564 },
-    },
-  };
-}
-
-function getUserByToken(token: string): any | null {
-  if (!token) return null;
-  const db = loadDb();
-  const email = db.tokens?.[token];
-  if (!email) return null;
-  return db.accounts?.find((a: any) => a.email === email) || null;
-}
-
-function getSetting(key: string): any {
-  const db = loadDb();
-  return db.xenaSettings?.[key]?.value || db.xenaSettings?.[key];
-}
-
-function getPendingPayments(): any[] {
-  const db = loadDb();
-  return db.pendingPayments || [];
-}
-
-function savePendingPayment(payment: any) {
-  const db = loadDb();
-  db.pendingPayments = db.pendingPayments || [];
-  db.pendingPayments.unshift(payment);
-  saveDb(db);
-}
-
-function findPendingPayment(provider: string, reference: string): any | null {
-  const db = loadDb();
-  return (db.pendingPayments || []).find(
-    (p: any) => p.provider === provider && p.reference === reference
-  );
-}
-
-function updatePendingPayment(reference: string, updates: any): any | null {
-  const db = loadDb();
-  const idx = (db.pendingPayments || []).findIndex((p: any) => p.reference === reference);
-  if (idx === -1) return null;
-  db.pendingPayments[idx] = { ...db.pendingPayments[idx], ...updates };
-  saveDb(db);
-  return db.pendingPayments[idx];
-}
-
-function creditUser(email: string, xenaAmount: number, txData: any) {
-  const db = loadDb();
-  const accIdx = (db.accounts || []).findIndex((a: any) => a.email === email);
-  if (accIdx === -1) return false;
-  const acc = db.accounts[accIdx];
-  acc.balances = acc.balances || {};
-  acc.balances.availableXena = (acc.balances.availableXena || 0) + xenaAmount;
-  acc.balances.totalBalance = (acc.balances.totalBalance || 0) + xenaAmount;
-  acc.transactions = acc.transactions || [];
-  acc.transactions.unshift({
-    id: `tx-${Date.now()}-${Math.floor(Math.random() * 999)}`,
-    ...txData,
-    amount: xenaAmount,
-    unit: 'XENA',
-    status: 'Completed',
-    timestamp: new Date().toLocaleString(),
-    fee: 0,
-  });
-  acc.notifications = acc.notifications || [];
-  acc.notifications.unshift({
-    id: `notif-dep-${Date.now()}`,
-    title: txData.notifTitle || 'Deposit Confirmed',
-    message: txData.notifMessage || `${xenaAmount.toLocaleString()} XENA credited.`,
-    timestamp: 'Just now',
-    read: false,
-    type: 'transaction',
-  });
-  saveDb(db);
-  return true;
+function requireSupabase() {
+  if (!supabase) throw new Error('Supabase not configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing)');
+  return supabase;
 }
 
 export function getAppUrl(): string {
@@ -167,4 +64,94 @@ export function handleError(e: unknown, res: VercelResponse): void {
   json(res, { ok: false, error: e instanceof Error ? e.message : 'Unexpected error.' }, 500);
 }
 
-export { loadDb, saveDb, getUserByToken, getSetting, getPendingPayments, savePendingPayment, findPendingPayment, updatePendingPayment, creditUser };
+// ---- Supabase-backed helpers ----
+
+export async function getUserByToken(token: string): Promise<any | null> {
+  if (!token) return null;
+  const sb = requireSupabase();
+  const { data: tokenRow } = await sb.from('tokens').select('email').eq('token', token).maybeSingle();
+  if (!tokenRow?.email) return null;
+  const { data: account } = await sb.from('accounts').select('*').eq('email', tokenRow.email).maybeSingle();
+  return account || null;
+}
+
+export async function getSetting(key: string): Promise<any> {
+  const sb = requireSupabase();
+  const { data } = await sb.from('xena_settings').select('value').eq('key', key).maybeSingle();
+  return data?.value || null;
+}
+
+export async function savePendingPayment(payment: any): Promise<void> {
+  const sb = requireSupabase();
+  const { error } = await sb.from('pending_payments').insert(payment);
+  if (error) throw error;
+}
+
+export async function findPendingPayment(provider: string, reference: string): Promise<any | null> {
+  const sb = requireSupabase();
+  const { data } = await sb.from('pending_payments').select('*').eq('provider', provider).eq('reference', reference).maybeSingle();
+  return data || null;
+}
+
+export async function updatePendingPayment(reference: string, updates: any): Promise<any | null> {
+  const sb = requireSupabase();
+  const { data, error } = await sb.from('pending_payments').update(updates).eq('reference', reference).select().maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+export async function creditUser(email: string, xenaAmount: number, txData: any): Promise<boolean> {
+  const sb = requireSupabase();
+  const { data: account } = await sb.from('accounts').select('*').eq('email', email).maybeSingle();
+  if (!account) return false;
+
+  const newAvailableXena = (account.balances?.availableXena || 0) + xenaAmount;
+  const newTotalBalance = (account.balances?.totalBalance || 0) + xenaAmount;
+
+  const newTx = {
+    id: `tx-${Date.now()}-${Math.floor(Math.random() * 999)}`,
+    ...txData,
+    amount: xenaAmount,
+    unit: 'XENA',
+    status: 'Completed',
+    timestamp: new Date().toLocaleString(),
+    fee: 0,
+  };
+
+  const newNotification = {
+    id: `notif-dep-${Date.now()}`,
+    title: txData.notifTitle || 'Deposit Confirmed',
+    message: txData.notifMessage || `${xenaAmount.toLocaleString()} XENA credited.`,
+    timestamp: 'Just now',
+    read: false,
+    type: 'transaction',
+  };
+
+  const { error: updateError } = await sb.from('accounts').update({
+    balances: {
+      ...account.balances,
+      availableXena: newAvailableXena,
+      totalBalance: newTotalBalance,
+    },
+    transactions: [newTx, ...(account.transactions || [])],
+    notifications: [newNotification, ...(account.notifications || [])],
+  }).eq('email', email);
+
+  if (updateError) throw updateError;
+
+  // Also insert into deposits table for record-keeping
+  const depositRecord = {
+    id: `dep-${Date.now()}`,
+    email,
+    amount: txData.amount || 0,
+    unit: txData.unit || 'XENA',
+    xena: xenaAmount,
+    status: 'Completed',
+    method: txData.method || 'Deposit',
+    reference: txData.reference,
+    created_at: new Date().toISOString(),
+  };
+  await sb.from('deposits').insert(depositRecord);
+
+  return true;
+}

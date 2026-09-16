@@ -31,12 +31,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const amountNgn = Number(tx.amount || 0);
-    const rateSetting = getSetting('xena_ngn_rate');
-    const limits = getSetting('limits');
+    const rateSetting = await getSetting('xena_ngn_rate');
+    const limits = await getSetting('limits');
     const rate = Number(rateSetting?.ngnRate ?? limits?.xenaNgnRate ?? 0.3333);
     const xenaAmount = Math.round((amountNgn / rate) * 10000) / 10000;
 
-    const pay = findPendingPayment('flutterwave', txRef);
+    const pay = await findPendingPayment('flutterwave', txRef);
     if (!pay) return json(res, { ok: false, error: 'Payment not found.' }, 404);
     if (pay.status === 'confirmed') {
       return json(res, { ok: true, xena: pay.xena || 0, duplicate: true });
@@ -45,8 +45,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return json(res, { ok: false, error: 'This payment belongs to another account.' }, 403);
     }
 
-    updatePendingPayment(txRef, { status: 'confirmed', xena: xenaAmount });
-    creditUser(String(user.email || ''), xenaAmount, {
+    await updatePendingPayment(txRef, { status: 'confirmed', xena: xenaAmount });
+    await creditUser(String(user.email || ''), xenaAmount, {
       title: 'Naira Deposit (Flutterwave)',
       type: 'deposit',
       paymentMethod: 'Flutterwave · NGN',

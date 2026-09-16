@@ -53,12 +53,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (verified && pay) {
-      const rateSetting = getSetting('xena_ngn_rate');
-      const limits = getSetting('limits');
+      const rateSetting = await getSetting('xena_ngn_rate');
+      const limits = await getSetting('limits');
       const rate = Number(rateSetting?.ngnRate ?? limits?.xenaNgnRate ?? 0.3333);
       const xena = Math.round((amount / rate) * 10000) / 10000;
-      updatePendingPayment(reference, { status: 'confirmed', xena });
-      creditUser(email, xena, {
+      await updatePendingPayment(reference, { status: 'confirmed', xena });
+      await creditUser(email, xena, {
         title: 'Naira Deposit (Flutterwave)',
         type: 'deposit',
         paymentMethod: 'Flutterwave · NGN',
