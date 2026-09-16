@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getServiceClient, requireEnv, json, readJsonBody, handleError } from '../_lib/helpers.js';
+import { requireEnv, json, readJsonBody, handleError, getUserByToken, getSetting, findPendingPayment, updatePendingPayment, creditUser } from '../_lib/helpers.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -10,9 +10,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!token) return json(res, { ok: false, error: 'Not authenticated.' }, 401);
     if (!txRef) return json(res, { ok: false, error: 'Missing tx_ref/reference.' }, 400);
 
-    const sb = await getServiceClient();
-    const { data: u, error: uErr } = await sb.auth.getUser(token);
-    if (uErr || !u?.user) return json(res, { ok: false, error: 'Invalid session.' }, 401);
+    const user = getUserByToken(token);
+    if (!user) return json(res, { ok: false, error: 'Invalid session.' }, 401);
 
     const secret = requireEnv('FLUTTERWAVE_SECRET_KEY');
     const verifyRes = await fetch(`https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=${encodeURIComponent(txRef)}`, {
@@ -32,21 +31,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const amountNgn = Number(tx.amount || 0);
-    const { data: rateRow } = await sb.from('xena_settings').select('value').eq('key', 'xena_ngn_rate').maybeSingle();
-    const { data: limits } = await sb.from('xena_settings').select('value').eq('key', 'limits').maybeSingle();
-    const rate = Number(rateRow?.value?.ngnRate ?? limits?.value?.xenaNgnRate ?? 0.3333);
+    const rateSetting = getSetting('xena_ngn_rate');
+    const limits = getSetting('limits');
+    const rate = Number(rateSetting?.ngnRate ?? limits?.xenaNgnRate ?? 0.3333);
     const xenaAmount = Math.round((amountNgn / rate) * 10000) / 10000;
 
-    const { data, error } = await sb.rpc('credit_payment', {
-      p_reference: String(tx.tx_ref || txRef),
-      p_provider: 'flutterwave',
-      p_amount: amountNgn,
-      p_currency: 'NGN',
-      p_email: u.user.email,
-      p_xena: xenaAmount,
-      p_meta: { coin: 'ngn', method: 'flutterwave' },
+    const pay = findPendingPayment('flutterwave', txRef);
+    if (!pay) return json(res, { ok: false, error: 'Payment not found.' }, 404);
+    if (pay.status === 'confirmed') {
+      return json(res, { ok: true, xena: pay.xena || 0, duplicate: true });
+    }
+    if (pay.email?.toLowerCase() !== String(user.email || '').toLowerCase()) {
+      return json(res, { ok: false, error: 'This payment belongs to another account.' }, 403);
+    }
+
+    updatePendingPayment(txRef, { status: 'confirmed', xena: xenaAmount });
+    creditUser(String(user.email || ''), xenaAmount, {
+      title: 'Naira Deposit (Flutterwave)',
+      type: 'deposit',
+      paymentMethod: 'Flutterwave · NGN',
+      counterparty: 'Flutterwave',
+      notifTitle: 'Flutterwave Deposit Confirmed',
+      notifMessage: `Your NGN deposit was verified. ${xenaAmount.toLocaleString()} XENA has been credited to your balance.`,
     });
-    if (error) throw error;
 
     return json(res, { ok: true, xena: xenaAmount });
   } catch (e) {

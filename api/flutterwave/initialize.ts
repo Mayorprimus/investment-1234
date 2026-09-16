@@ -1,9 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import crypto from 'node:crypto';
-import { getServiceClient, requireEnv, getAppUrl, json, readJsonBody, handleError } from '../_lib/helpers.js';
+import { getAppUrl, requireEnv, json, readJsonBody, handleError, getUserByToken, getSetting, savePendingPayment } from '../_lib/helpers.js';
 
-// Creates a Flutterwave payment and records a pending payment row. The
-// secret stays ONLY in Vercel env vars — never sent to the client.
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== 'POST') return json(res, { ok: false, error: 'Method not allowed.' }, 405);
@@ -13,13 +11,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!token) return json(res, { ok: false, error: 'Not authenticated.' }, 401);
     if (!amountNgn || amountNgn <= 0) return json(res, { ok: false, error: 'Enter a valid deposit amount.' }, 400);
 
-    const sb = await getServiceClient();
-    const { data: u, error: uErr } = await sb.auth.getUser(token);
-    if (uErr || !u?.user) return json(res, { ok: false, error: 'Invalid session.' }, 401);
-    const email = String(u.user.email || '').trim().toLowerCase();
+    const user = getUserByToken(token);
+    if (!user) return json(res, { ok: false, error: 'Invalid session.' }, 401);
+    const email = String(user.email || '').trim().toLowerCase();
 
-    const { data: limits } = await sb.from('xena_settings').select('value').eq('key', 'limits').maybeSingle();
-    const minDeposit = Number(limits?.value?.min_deposit_ngn ?? 3000);
+    const limits = getSetting('limits');
+    const minDeposit = Number(limits?.min_deposit_ngn ?? 3000);
     if (amountNgn < minDeposit) {
       return json(res, { ok: false, error: `Minimum deposit is ₦${minDeposit.toLocaleString()}.` }, 400);
     }
@@ -35,9 +32,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       currency: 'NGN',
       redirect_url: `${base}/wallet?flutterwave_status=success`,
       payment_options: 'banktransfer,card,ussd',
-      customer: { email, name: u.user.user_metadata?.name || 'XENA User' },
+      customer: { email, name: user.name || 'XENA User' },
       customizations: { title: 'XENA Deposit', description: `Deposit ₦${amountNgn.toLocaleString()} via Flutterwave`, logo: '' },
-      meta: { user_id: u.user.id },
+      meta: { email },
     };
 
     const fwRes = await fetch('https://api.flutterwave.com/v3/payments', {
@@ -50,15 +47,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return json(res, { ok: false, error: fwData?.message || 'Unable to initialize Flutterwave payment.' }, 502);
     }
 
-    const { error: recErr } = await sb.rpc('record_pending_payment', {
-      p_reference: txRef,
-      p_provider: 'flutterwave',
-      p_amount: amountNgn,
-      p_currency: 'NGN',
-      p_email: email,
-      p_meta: { tx_ref: txRef, payment_link: fwData.data?.link },
+    savePendingPayment({
+      id: `pp-${Date.now()}`,
+      reference: txRef,
+      provider: 'flutterwave',
+      email,
+      name: user.name || '',
+      amount: amountNgn,
+      currency: 'NGN',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      meta: { tx_ref: txRef, payment_link: fwData.data?.link },
     });
-    if (recErr) return json(res, { ok: false, error: recErr.message }, 502);
 
     return json(res, {
       ok: true,

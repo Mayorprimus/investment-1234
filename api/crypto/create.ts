@@ -1,8 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getServiceClient, requireEnv, getAppUrl, json, readJsonBody, handleError } from '../_lib/helpers.js';
+import { getAppUrl, requireEnv, json, readJsonBody, handleError, getUserByToken, getSetting, savePendingPayment } from '../_lib/helpers.js';
 
-// Creates a NOWPayments invoice for a crypto deposit. Records a pending
-// payment row so the IPN webhook can match and credit idempotently.
 const SUPPORTED_COINS: Record<string, string> = {
   usdt: 'usdttrc20',
   usdc: 'usdctrc20',
@@ -23,13 +21,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!SUPPORTED_COINS[coin]) return json(res, { ok: false, error: 'Unsupported coin.' }, 400);
     if (!(amountUsd > 0)) return json(res, { ok: false, error: 'Invalid amount.' }, 400);
 
-    const sb = await getServiceClient();
-    const { data: u, error: uErr } = await sb.auth.getUser(token);
-    if (uErr || !u?.user) return json(res, { ok: false, error: 'Invalid session.' }, 401);
-    const email = String(u.user.email || '').trim().toLowerCase();
+    const user = getUserByToken(token);
+    if (!user) return json(res, { ok: false, error: 'Invalid session.' }, 401);
+    const email = String(user.email || '').trim().toLowerCase();
 
-    const { data: limits } = await sb.from('xena_settings').select('value').eq('key', 'limits').maybeSingle();
-    const minUsd = Number(limits?.value?.minDepositUsd ?? 10);
+    const limits = getSetting('limits');
+    const minUsd = Number(limits?.minDepositUsd ?? 10);
     if (amountUsd < minUsd) return json(res, { ok: false, error: `Minimum deposit is $${minUsd}.` }, 400);
 
     const apiKey = requireEnv('NOWPAYMENTS_API_KEY');
@@ -43,7 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         price_amount: amountUsd,
         price_currency: 'usd',
         pay_currency: currency,
-        order_id: `xena-${u.user.id}-${Date.now()}`,
+        order_id: `xena-${email}-${Date.now()}`,
         order_description: `XENA deposit via ${coin.toUpperCase()}`,
         ipn_callback_url: `${base}/api/crypto/ipn`,
         success_url: `${base}/wallet`,
@@ -56,19 +53,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return json(res, { ok: false, error: invoice?.message || 'NOWPayments rejected the invoice.' }, 502);
     }
 
-    const { data, error } = await sb.rpc('record_pending_payment', {
-      p_reference: String(invoice.id),
-      p_provider: 'nowpayments',
-      p_amount: amountUsd,
-      p_currency: 'USD',
-      p_email: email,
-      p_meta: { coin, method: `crypto-${coin}` },
+    const reference = String(invoice.payment_id || invoice.id);
+    savePendingPayment({
+      id: `pp-${Date.now()}`,
+      reference,
+      provider: 'nowpayments',
+      email,
+      name: user.name || '',
+      amount: amountUsd,
+      currency: 'USD',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      meta: { coin, invoice_id: String(invoice.id) },
     });
-    if (error) return json(res, { ok: false, error: error.message }, 502);
 
     return json(res, {
       ok: true,
-      payment_id: String(invoice.id),
+      payment_id: reference,
       pay_address: invoice?.pay_address || null,
       pay_amount: Number(invoice?.pay_amount || amountUsd),
       pay_currency: invoice?.pay_currency || currency,
