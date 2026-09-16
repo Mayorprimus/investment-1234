@@ -21,11 +21,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!SUPPORTED_COINS[coin]) return json(res, { ok: false, error: 'Unsupported coin.' }, 400);
     if (!(amountUsd > 0)) return json(res, { ok: false, error: 'Invalid amount.' }, 400);
 
-    const user = getUserByToken(token);
+    const user = await getUserByToken(token);
     if (!user) return json(res, { ok: false, error: 'Invalid session.' }, 401);
     const email = String(user.email || '').trim().toLowerCase();
 
-    const limits = getSetting('limits');
+    const limits = await getSetting('limits');
     const minUsd = Number(limits?.minDepositUsd ?? 10);
     if (amountUsd < minUsd) return json(res, { ok: false, error: `Minimum deposit is $${minUsd}.` }, 400);
 

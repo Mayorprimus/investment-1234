@@ -13,6 +13,22 @@ function requireSupabase() {
   return supabase;
 }
 
+// Supabase admin client (service role) — for auth admin operations
+export async function getServiceClient() {
+  return requireSupabase();
+}
+
+// Admin token check — supports both old (token only) and new (req, body) signatures
+export async function requireAdminToken(tokenOrReq: any, body?: any): Promise<boolean> {
+  const token = typeof tokenOrReq === 'string' ? tokenOrReq : (tokenOrReq?.body?.token || '');
+  if (!token) return false;
+  const sb = requireSupabase();
+  const { data } = await sb.auth.getUser(token);
+  if (!data?.user) return false;
+  const { data: profile } = await sb.from('profiles').select('role').eq('id', data.user.id).maybeSingle();
+  return !!profile && profile.role === 'admin';
+}
+
 export function getAppUrl(): string {
   return (process.env.APP_URL || '').replace(/\/$/, '');
 }

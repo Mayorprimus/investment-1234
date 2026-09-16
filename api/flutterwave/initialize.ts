@@ -11,11 +11,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!token) return json(res, { ok: false, error: 'Not authenticated.' }, 401);
     if (!amountNgn || amountNgn <= 0) return json(res, { ok: false, error: 'Enter a valid deposit amount.' }, 400);
 
-    const user = getUserByToken(token);
+    const user = await getUserByToken(token);
     if (!user) return json(res, { ok: false, error: 'Invalid session.' }, 401);
     const email = String(user.email || '').trim().toLowerCase();
 
-    const limits = getSetting('limits');
+    const limits = await getSetting('limits');
     const minDeposit = Number(limits?.min_deposit_ngn ?? 3000);
     if (amountNgn < minDeposit) {
       return json(res, { ok: false, error: `Minimum deposit is ₦${minDeposit.toLocaleString()}.` }, 400);
