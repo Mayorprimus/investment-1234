@@ -279,7 +279,16 @@ function saveDb() {
 }
 
 const app = express();
-app.use(express.json({ limit: '2mb' }));
+// Stash the raw request buffer so webhook HMAC verification (NOWPayments IPN)
+// can sign exactly what the provider sent, not a re-serialization.
+app.use(
+  express.json({
+    limit: '2mb',
+    verify: (req, res, buf) => {
+      if (buf && buf.length) req.rawBody = buf;
+    },
+  })
+);
 
 app.get('/api/state', (req, res) => {
   res.set('Cache-Control', 'no-store');
@@ -773,6 +782,441 @@ app.post('/api/p2p/payment/reject', (req, res) => {
   trade.status = 'rejected';
   saveDb();
   res.json({ ok: true });
+});
+
+// ---------- Payments: shared helpers (Flutterwave / NOWPayments) ----------
+const FLUTTERWAVE_SECRET_KEY = process.env.FLUTTERWAVE_SECRET_KEY || '';
+const FLUTTERWAVE_PUBLIC_KEY = process.env.FLUTTERWAVE_PUBLIC_KEY || '';
+const FLUTTERWAVE_WEBHOOK_SECRET_HASH = process.env.FLUTTERWAVE_WEBHOOK_SECRET_HASH || '';
+const NOWPAYMENTS_API_KEY = process.env.NOWPAYMENTS_API_KEY || '';
+const NOWPAYMENTS_IPN_SECRET = process.env.NOWPAYMENTS_IPN_SECRET || '';
+// Webhook URLs + redirect targets are built from this (set in .env / hosting).
+const APP_ORIGIN = (process.env.APP_URL || `http://localhost:${PORT}`).replace(/\/+$/, '');
+
+// Official XENA pricing: 1 XENA = N0.3333 = $0.0002564.
+const NGN_PER_XENA = 0.3333;
+const USD_PER_XENA = 0.0002564;
+const MIN_NGN_DEPOSIT = 3000;
+const MIN_USD_DEPOSIT = 10;
+
+// Pending payments are tracked in db.pendingPayments so webhooks + client-side
+// "confirm" calls share one idempotent credit path.
+function pendingList() {
+  db.pendingPayments = Array.isArray(db.pendingPayments) ? db.pendingPayments : [];
+  return db.pendingPayments;
+}
+
+// Idempotently credit a confirmed payment row once. Mirrors the credit pattern
+// used by /api/p2p/payment/approve (balance + transaction + notification).
+function finalizeDeposit(pay, xena, opts = {}) {
+  if (!pay) return false;
+  if (pay.status === 'confirmed') return true;
+  const acc = (db.accounts || []).find((a) => a.email === pay.email);
+  if (!acc) return false;
+  acc.balances = acc.balances || {};
+  acc.balances.availableXena = (acc.balances.availableXena || 0) + xena;
+  acc.balances.totalBalance = (acc.balances.totalBalance || 0) + xena;
+  acc.transactions = acc.transactions || [];
+  acc.transactions.unshift({
+    id: `tx-${Date.now()}-${Math.floor(Math.random() * 999)}`,
+    title: opts.title || 'Deposit',
+    type: 'deposit',
+    amount: xena,
+    unit: 'XENA',
+    status: 'Completed',
+    timestamp: new Date().toLocaleString(),
+    paymentMethod: opts.method || 'Payment',
+    fee: 0,
+  });
+  acc.notifications = acc.notifications || [];
+  acc.notifications.unshift({
+    id: `notif-dep-${Date.now()}`,
+    title: opts.notifTitle || 'Deposit Confirmed',
+    message: opts.notifMessage || `${xena.toLocaleString()} XENA has been credited to your balance.`,
+    timestamp: 'Just now',
+    read: false,
+    type: 'transaction',
+  });
+  pay.status = 'confirmed';
+  pay.xena = xena;
+  db.deposits = db.deposits || [];
+  db.deposits.unshift({
+    id: `dep-${Date.now()}`,
+    user: acc.name || acc.email,
+    email: pay.email,
+    method: opts.method || pay.provider,
+    amount: pay.amount,
+    unit: pay.currency || 'USD',
+    xena,
+    status: 'Completed',
+    time: 'Just now',
+    reference: pay.reference,
+  });
+  saveDb();
+  return true;
+}
+
+// ---------- Flutterwave (NGN deposits) ----------
+app.post('/api/flutterwave/initialize', async (req, res) => {
+  const { token, amountNgn } = req.body || {};
+  const email = emailForToken(token);
+  if (!email) {
+    res.status(401).json({ ok: false, error: 'Session invalid. Please sign in again.' });
+    return;
+  }
+  const acc = (db.accounts || []).find((a) => a.email === email);
+  if (!acc) {
+    res.status(404).json({ ok: false, error: 'Account not found.' });
+    return;
+  }
+  const amount = Math.round(Number(amountNgn) || 0);
+  if (!(amount > 0)) {
+    res.status(400).json({ ok: false, error: 'Enter a valid deposit amount.' });
+    return;
+  }
+  if (amount < MIN_NGN_DEPOSIT) {
+    res.status(400).json({ ok: false, error: `Minimum deposit is ₦${MIN_NGN_DEPOSIT.toLocaleString()}.` });
+    return;
+  }
+  if (!FLUTTERWAVE_SECRET_KEY) {
+    res.status(500).json({ ok: false, error: 'Flutterwave is not configured.' });
+    return;
+  }
+  const txRef = 'xena-' + crypto.randomBytes(12).toString('hex');
+  const payload = {
+    tx_ref: txRef,
+    amount,
+    currency: 'NGN',
+    redirect_url: `${APP_ORIGIN}/wallet?flutterwave_status=success`,
+    payment_options: 'banktransfer,card,ussd',
+    customer: { email, name: acc.name || 'XENA User' },
+    customizations: { title: 'XENA Deposit', description: `Deposit ₦${amount.toLocaleString()} via Flutterwave`, logo: '' },
+    meta: { email },
+  };
+  let fwData = {};
+  try {
+    const fw = await fetch('https://api.flutterwave.com/v3/payments', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${FLUTTERWAVE_SECRET_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    fwData = await fw.json();
+    if (!fw.ok || fwData?.status !== 'success') {
+      res.status(502).json({ ok: false, error: fwData?.message || 'Unable to initialize Flutterwave payment.' });
+      return;
+    }
+  } catch (err) {
+    res.status(502).json({ ok: false, error: 'Unable to reach Flutterwave.' });
+    return;
+  }
+  pendingList().unshift({
+    id: `pp-${Date.now()}`,
+    reference: txRef,
+    provider: 'flutterwave',
+    email,
+    name: acc.name || '',
+    amount,
+    currency: 'NGN',
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    meta: { tx_ref: txRef, payment_link: fwData.data?.link },
+  });
+  saveDb();
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    reference: txRef,
+    tx_ref: txRef,
+    payment_link: fwData.data?.link,
+    public_key: FLUTTERWAVE_PUBLIC_KEY,
+  });
+});
+
+// Flutterwave webhook — set this URL in the Flutterwave dashboard. The
+// verif-hash header must match FLUTTERWAVE_WEBHOOK_SECRET_HASH, and the
+// transaction is re-verified server-side before any balance is credited.
+app.post('/api/flutterwave/webhook', async (req, res) => {
+  const signature = req.headers['verif-hash'] || req.headers['x-flutterwave-signature'] || '';
+  if (FLUTTERWAVE_WEBHOOK_SECRET_HASH && signature !== FLUTTERWAVE_WEBHOOK_SECRET_HASH) {
+    res.status(401).json({ ok: false, error: 'Invalid signature.' });
+    return;
+  }
+  const body = req.body || {};
+  if (body.event !== 'charge.completed') {
+    res.json({ ok: true });
+    return;
+  }
+  const tx = body.data;
+  if (!tx || tx.status !== 'successful' || tx.currency !== 'NGN') {
+    res.json({ ok: true });
+    return;
+  }
+  const pay = pendingList().find(
+    (p) => p.provider === 'flutterwave' && (p.reference === tx.tx_ref || p.reference === String(tx.id || ''))
+  );
+  if (pay && pay.status === 'confirmed') {
+    res.json({ ok: true });
+    return;
+  }
+  let amount = Number(tx.amount || 0);
+  let verified = false;
+  if (FLUTTERWAVE_SECRET_KEY && tx.id) {
+    try {
+      const v = await fetch(`https://api.flutterwave.com/v3/transactions/${tx.id}/verify`, {
+        headers: { Authorization: `Bearer ${FLUTTERWAVE_SECRET_KEY}` },
+      });
+      const vd = await v.json();
+      if (vd?.status === 'success' && vd?.data?.status === 'successful') {
+        amount = Number(vd.data.amount || amount);
+        verified = true;
+      }
+    } catch (err) {
+      verified = false;
+    }
+  }
+  if (verified && pay) {
+    const xena = Math.round((amount / NGN_PER_XENA) * 10000) / 10000;
+    finalizeDeposit(pay, xena, {
+      title: 'Naira Deposit (Flutterwave)',
+      method: 'Flutterwave · NGN',
+      notifTitle: 'Flutterwave Deposit Confirmed',
+      notifMessage: `Your NGN deposit was verified. ${xena.toLocaleString()} XENA has been credited to your balance.`,
+    });
+  }
+  res.json({ ok: true });
+});
+
+// Client-side confirm — called by "Confirm Payment" after the redirect back.
+app.post('/api/flutterwave/verify', async (req, res) => {
+  const { token, tx_ref } = req.body || {};
+  const email = emailForToken(token);
+  if (!email) {
+    res.status(401).json({ ok: false, error: 'Session invalid. Please sign in again.' });
+    return;
+  }
+  const txRef = String(tx_ref || '').trim();
+  if (!txRef) {
+    res.status(400).json({ ok: false, error: 'Missing transaction reference.' });
+    return;
+  }
+  const pay = pendingList().find((p) => p.provider === 'flutterwave' && p.reference === txRef && p.email === email);
+  if (!pay) {
+    res.status(404).json({ ok: false, error: 'Payment not found.' });
+    return;
+  }
+  if (pay.status === 'confirmed') {
+    res.json({ ok: true, xena: pay.xena || 0, duplicate: true });
+    return;
+  }
+  if (!FLUTTERWAVE_SECRET_KEY) {
+    res.status(500).json({ ok: false, error: 'Flutterwave is not configured.' });
+    return;
+  }
+  let verifyData = {};
+  try {
+    const v = await fetch(`https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=${encodeURIComponent(txRef)}`, {
+      headers: { Authorization: `Bearer ${FLUTTERWAVE_SECRET_KEY}` },
+    });
+    verifyData = await v.json();
+    if (!v.ok || verifyData?.status !== 'success') {
+      res.status(400).json({ ok: false, error: verifyData?.message || 'Payment not confirmed yet. Try again in a few seconds.' });
+      return;
+    }
+  } catch (err) {
+    res.status(502).json({ ok: false, error: 'Unable to reach Flutterwave.' });
+    return;
+  }
+  const tx = verifyData.data;
+  if (!tx || tx.status !== 'successful') {
+    res.status(400).json({ ok: false, error: `Payment status: ${tx?.status || 'unknown'}` });
+    return;
+  }
+  const amount = Number(tx.amount || pay.amount || 0);
+  const xena = Math.round((amount / NGN_PER_XENA) * 10000) / 10000;
+  finalizeDeposit(pay, xena, {
+    title: 'Naira Deposit (Flutterwave)',
+    method: 'Flutterwave · NGN',
+    notifTitle: 'Flutterwave Deposit Confirmed',
+    notifMessage: `Your NGN deposit was verified. ${xena.toLocaleString()} XENA has been credited to your balance.`,
+  });
+  res.set('Cache-Control', 'no-store');
+  res.json({ ok: true, xena });
+});
+
+// ---------- NOWPayments (crypto deposits) ----------
+const CRYPTO_CURRENCIES = { usdt: 'usdttrc20', usdc: 'usdctrc20', btc: 'btc', sol: 'sol', eth: 'eth' };
+
+app.post('/api/crypto/create', async (req, res) => {
+  const { token, coin, amountUsd } = req.body || {};
+  const email = emailForToken(token);
+  if (!email) {
+    res.status(401).json({ ok: false, error: 'Session invalid. Please sign in again.' });
+    return;
+  }
+  const acc = (db.accounts || []).find((a) => a.email === email);
+  if (!acc) {
+    res.status(404).json({ ok: false, error: 'Account not found.' });
+    return;
+  }
+  const coinKey = String(coin || '').toLowerCase();
+  const payCurrency = CRYPTO_CURRENCIES[coinKey];
+  if (!payCurrency) {
+    res.status(400).json({ ok: false, error: 'Unsupported coin.' });
+    return;
+  }
+  const usd = Number(amountUsd) || 0;
+  if (!(usd > 0)) {
+    res.status(400).json({ ok: false, error: 'Enter a valid USD amount.' });
+    return;
+  }
+  if (usd < MIN_USD_DEPOSIT) {
+    res.status(400).json({ ok: false, error: `Minimum deposit is $${MIN_USD_DEPOSIT}.` });
+    return;
+  }
+  if (!NOWPAYMENTS_API_KEY) {
+    res.status(500).json({ ok: false, error: 'NOWPayments is not configured.' });
+    return;
+  }
+  let invoice = {};
+  try {
+    const inv = await fetch('https://api.nowpayments.io/v1/invoice', {
+      method: 'POST',
+      headers: { 'x-api-key': NOWPAYMENTS_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        price_amount: usd,
+        price_currency: 'usd',
+        pay_currency: payCurrency,
+        order_id: `xena-${String(email).replace(/[^a-z0-9@._-]/gi, '')}-${Date.now()}`,
+        order_description: `XENA deposit via ${coinKey.toUpperCase()}`,
+        ipn_callback_url: `${APP_ORIGIN}/api/crypto/ipn`,
+        success_url: `${APP_ORIGIN}/wallet`,
+        cancel_url: `${APP_ORIGIN}/wallet`,
+      }),
+    });
+    invoice = await inv.json();
+    if (!inv.ok || !invoice?.id) {
+      res.status(502).json({ ok: false, error: invoice?.message || 'NOWPayments rejected the invoice.' });
+      return;
+    }
+  } catch (err) {
+    res.status(502).json({ ok: false, error: 'Unable to reach NOWPayments.' });
+    return;
+  }
+  const reference = String(invoice.payment_id || invoice.id);
+  pendingList().unshift({
+    id: `pp-${Date.now()}`,
+    reference,
+    provider: 'nowpayments',
+    email,
+    name: acc.name || '',
+    amount: usd,
+    currency: 'USD',
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    meta: { coin: coinKey, invoice_id: String(invoice.id) },
+  });
+  saveDb();
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    payment_id: reference,
+    pay_address: invoice.pay_address || null,
+    pay_amount: Number(invoice.pay_amount || usd),
+    pay_currency: invoice.pay_currency || payCurrency,
+    status: invoice.payment_status || 'waiting',
+    invoice_url: invoice.invoice_url || null,
+  });
+});
+
+// NOWPayments IPN webhook — set this URL as the IPN callback in NOWPayments.
+// Signs the RAW body with HMAC-SHA512 (NOWPAYMENTS_IPN_SECRET) and credits
+// only on confirmed/finished payments.
+app.post('/api/crypto/ipn', async (req, res) => {
+  const signature = req.headers['x-nowpayments-sig'] || '';
+  if (!NOWPAYMENTS_IPN_SECRET || !signature) {
+    res.status(401).json({ ok: false, error: 'Missing signature.' });
+    return;
+  }
+  const raw = Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : JSON.stringify(req.body || {});
+  const expected = crypto.createHmac('sha512', NOWPAYMENTS_IPN_SECRET).update(raw).digest('hex');
+  const a = Buffer.from(signature, 'hex');
+  const b = Buffer.from(expected, 'hex');
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    res.status(401).json({ ok: false, error: 'Invalid signature.' });
+    return;
+  }
+  const parsed = req.body || {};
+  const paymentId = String(parsed.payment_id || parsed.id || '');
+  if (!paymentId) return res.json({ ok: true });
+  const status = String(parsed.payment_status || parsed.status || '');
+  if (!['confirmed', 'finished'].includes(status)) return res.json({ ok: true });
+  const pay = pendingList().find((p) => p.provider === 'nowpayments' && p.reference === paymentId);
+  if (!pay) return res.json({ ok: true });
+  if (pay.status === 'confirmed') return res.json({ ok: true });
+  const amount = Number(parsed.fiat_amount || parsed.price_amount || pay.amount || 0);
+  const xena = Math.round((amount / USD_PER_XENA) * 10000) / 10000;
+  const coinLabel = String(pay.meta?.coin || '').toUpperCase() || 'Crypto';
+  finalizeDeposit(pay, xena, {
+    title: 'Crypto Deposit (NOWPayments)',
+    method: `NOWPayments · ${coinLabel}`,
+    notifTitle: 'Crypto Deposit Confirmed',
+    notifMessage: `Your ${coinLabel} payment was confirmed. ${xena.toLocaleString()} XENA has been credited to your balance.`,
+  });
+  res.json({ ok: true });
+});
+
+// Client-side poll — called by "Check Payment Status" in the deposit modal.
+app.post('/api/crypto/status', async (req, res) => {
+  const { token, payment_id } = req.body || {};
+  const email = emailForToken(token);
+  if (!email) {
+    res.status(401).json({ ok: false, error: 'Session invalid. Please sign in again.' });
+    return;
+  }
+  const paymentId = String(payment_id || '').trim();
+  if (!paymentId) {
+    res.status(400).json({ ok: false, error: 'Missing payment id.' });
+    return;
+  }
+  const pay = pendingList().find((p) => p.provider === 'nowpayments' && p.reference === paymentId && p.email === email);
+  if (!pay) {
+    res.status(404).json({ ok: false, error: 'Payment not found.' });
+    return;
+  }
+  if (pay.status === 'confirmed') {
+    res.json({ ok: true, status: 'confirmed', xena: pay.xena || 0, duplicate: true });
+    return;
+  }
+  if (!NOWPAYMENTS_API_KEY) {
+    res.status(500).json({ ok: false, error: 'NOWPayments is not configured.' });
+    return;
+  }
+  let data = {};
+  try {
+    const sres = await fetch(`https://api.nowpayments.io/v1/payment/${encodeURIComponent(paymentId)}`, {
+      headers: { 'x-api-key': NOWPAYMENTS_API_KEY },
+    });
+    data = await sres.json();
+  } catch (err) {
+    res.status(502).json({ ok: false, error: 'Unable to reach NOWPayments.' });
+    return;
+  }
+  const status = String(data.payment_status || pay.status || 'waiting');
+  if (!['confirmed', 'finished'].includes(status)) {
+    res.json({ ok: true, status });
+    return;
+  }
+  const amount = Number(data.fiat_amount || data.price_amount || pay.amount || 0);
+  const xena = Math.round((amount / USD_PER_XENA) * 10000) / 10000;
+  const coinLabel = String(pay.meta?.coin || '').toUpperCase() || 'Crypto';
+  finalizeDeposit(pay, xena, {
+    title: 'Crypto Deposit (NOWPayments)',
+    method: `NOWPayments · ${coinLabel}`,
+    notifTitle: 'Crypto Deposit Confirmed',
+    notifMessage: `Your ${coinLabel} payment was confirmed. ${xena.toLocaleString()} XENA has been credited to your balance.`,
+  });
+  res.set('Cache-Control', 'no-store');
+  res.json({ ok: true, status: 'confirmed', xena });
 });
 
 const DIST_DIR = path.join(__dirname, 'dist');
