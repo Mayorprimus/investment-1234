@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { readRawBody, getSetting, findPendingPayment, updatePendingPayment, creditUser } from '../_lib/helpers.js';
+import { readRawBody, getSetting, findPendingPayment, updatePendingPayment, creditUser, requireSupabase, getAppUrl } from '../_lib/helpers.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -30,9 +30,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!reference) return res.status(200).json({ ok: true });
     const amountNgn = Number(tx.amount || 0);
     const email = String(tx.customer?.email || '').trim().toLowerCase();
+    if (!email) return res.status(200).json({ ok: true });
 
-    const pay = findPendingPayment('flutterwave', reference);
-    if (pay && pay.status === 'confirmed') return res.status(200).json({ ok: true });
+    const sb = requireSupabase();
+
+    const { data: account } = await sb.from('accounts').select('*').eq('email', email).maybeSingle();
 
     let amount = amountNgn;
     let verified = false;
@@ -52,12 +54,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    if (verified && pay) {
+    if (verified && account) {
       const rateSetting = await getSetting('xena_ngn_rate');
       const limits = await getSetting('limits');
       const rate = Number(rateSetting?.ngnRate ?? limits?.xenaNgnRate ?? 0.3333);
       const xena = Math.round((amount / rate) * 10000) / 10000;
-      await updatePendingPayment(reference, { status: 'confirmed', xena });
+
+      const pay = await findPendingPayment('flutterwave', reference);
+      if (pay && pay.status !== 'confirmed') {
+        await updatePendingPayment(reference, { status: 'confirmed', xena });
+      }
+
       await creditUser(email, xena, {
         title: 'Naira Deposit (Flutterwave)',
         type: 'deposit',
@@ -66,6 +73,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         notifTitle: 'Flutterwave Deposit Confirmed',
         notifMessage: `Your NGN deposit was verified. ${xena.toLocaleString()} XENA has been credited to your balance.`,
       });
+    } else if (verified && !account) {
+      const base = getAppUrl();
+      const adminUrl = base ? `${base}/admin` : 'admin panel';
+      console.warn(`Flutterwave webhook: payment for unknown email ${email}, reference ${reference}, amount ${amount}. Review in ${adminUrl}`);
     }
 
     return res.status(200).json({ ok: true });

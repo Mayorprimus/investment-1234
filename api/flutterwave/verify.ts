@@ -1,20 +1,26 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireEnv, json, readJsonBody, handleError, getUserByToken, getSetting, findPendingPayment, updatePendingPayment, creditUser } from '../_lib/helpers.js';
+import { requireEnv, json, readJsonBody, handleError, getUserByToken, getSetting, findPendingPayment, findPendingPaymentByEmail, updatePendingPayment, creditUser } from '../_lib/helpers.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== 'POST') return json(res, { ok: false, error: 'Method not allowed.' }, 405);
     const body = await readJsonBody(req);
     const token = String(body?.token || '');
-    const txRef = String(body?.tx_ref || body?.reference || '').trim();
     if (!token) return json(res, { ok: false, error: 'Not authenticated.' }, 401);
-    if (!txRef) return json(res, { ok: false, error: 'Missing tx_ref/reference.' }, 400);
 
     const user = getUserByToken(token);
     if (!user) return json(res, { ok: false, error: 'Invalid session.' }, 401);
 
+    const pay = await findPendingPaymentByEmail('flutterwave', String(user.email || '').toLowerCase());
+    if (!pay || !pay.reference) {
+      return json(res, { ok: false, error: 'No pending Flutterwave payment found for your account. Complete the payment first.' }, 404);
+    }
+    if (pay.status === 'confirmed') {
+      return json(res, { ok: true, xena: pay.xena || 0, duplicate: true });
+    }
+
     const secret = requireEnv('FLUTTERWAVE_SECRET_KEY');
-    const verifyRes = await fetch(`https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=${encodeURIComponent(txRef)}`, {
+    const verifyRes = await fetch(`https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=${encodeURIComponent(pay.reference)}`, {
       headers: { Authorization: `Bearer ${secret}` },
     });
     const verifyData = await verifyRes.json();
@@ -36,16 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const rate = Number(rateSetting?.ngnRate ?? limits?.xenaNgnRate ?? 0.3333);
     const xenaAmount = Math.round((amountNgn / rate) * 10000) / 10000;
 
-    const pay = await findPendingPayment('flutterwave', txRef);
-    if (!pay) return json(res, { ok: false, error: 'Payment not found.' }, 404);
-    if (pay.status === 'confirmed') {
-      return json(res, { ok: true, xena: pay.xena || 0, duplicate: true });
-    }
-    if (pay.email?.toLowerCase() !== String(user.email || '').toLowerCase()) {
-      return json(res, { ok: false, error: 'This payment belongs to another account.' }, 403);
-    }
-
-    await updatePendingPayment(txRef, { status: 'confirmed', xena: xenaAmount });
+    await updatePendingPayment(pay.reference, { status: 'confirmed', xena: xenaAmount });
     await creditUser(String(user.email || ''), xenaAmount, {
       title: 'Naira Deposit (Flutterwave)',
       type: 'deposit',

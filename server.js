@@ -4,12 +4,20 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
+import { createClient } from '@supabase/supabase-js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 const ADMIN_EMAIL = 'admin@xena.fi';
+
+// Supabase server-only client (service role key — never exposed to browser)
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
+  : null;
 
 // ---------- Password hashing (Node built-in scrypt, no deps) ----------
 // Password records store salt + hash only; plaintext is never persisted.
@@ -29,19 +37,34 @@ function verifyPassword(password, salt, hash) {
   }
 }
 
-// ---------- Token helpers ----------
-function tokenForEmail(email) {
-  return (db.tokens || {})[String(email).toLowerCase()] || null;
+// ---------- Token helpers (Supabase) ----------
+async function tokenForEmail(email) {
+  if (!supabase) return (db.tokens || {})[String(email).toLowerCase()] || null;
+  const e = String(email).toLowerCase();
+  const { data } = await supabase.from('tokens').select('token').eq('email', e).maybeSingle();
+  return data?.token || null;
 }
-function setToken(email) {
+
+async function setToken(email) {
   const token = crypto.randomBytes(32).toString('hex');
-  db.tokens = db.tokens || {};
-  db.tokens[String(email).toLowerCase()] = token;
-  saveDb();
+  const e = String(email).toLowerCase();
+  if (supabase) {
+    await supabase.from('tokens').upsert({ email: e, token });
+  } else {
+    db.tokens = db.tokens || {};
+    db.tokens[e] = token;
+    saveDb();
+  }
   return token;
 }
-function emailForToken(token) {
-  if (!token || !db.tokens) return null;
+
+async function emailForToken(token) {
+  if (!token) return null;
+  if (supabase) {
+    const { data } = await supabase.from('tokens').select('email').eq('token', token).maybeSingle();
+    return data?.email || null;
+  }
+  if (!db.tokens) return null;
   for (const email of Object.keys(db.tokens)) {
     if (db.tokens[email] === token) return email;
   }
@@ -91,15 +114,17 @@ function baseAccount(data) {
 }
 
 // ---------- Admin check ----------
-function isAdminToken(token) {
-  return emailForToken(token) === ADMIN_EMAIL;
+async function isAdminToken(token) {
+  const email = await emailForToken(token);
+  return email === ADMIN_EMAIL;
 }
-function requireAdminToken(token) {
-  if (!token || !isAdminToken(token)) return false;
-  return true;
+async function requireAdminToken(token) {
+  if (!token) return false;
+  return await isAdminToken(token);
 }
-function requireUserToken(token) {
-  return !!emailForToken(token);
+async function requireUserToken(token) {
+  if (!token) return false;
+  return !!(await emailForToken(token));
 }
 
 const SEED_STATE = {

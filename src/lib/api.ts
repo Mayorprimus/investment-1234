@@ -575,20 +575,14 @@ async function postServerless(path: string, body: Record<string, unknown>): Prom
   }
 }
 
-export async function flutterwaveInitialize(amountNgn: number): Promise<{ ok: boolean; error?: string; reference?: string; txRef?: string; paymentLink?: string; publicKey?: string }> {
-  const data = await postServerless('/api/flutterwave/initialize', { amountNgn });
-  if (!data?.ok) return { ok: false, error: data?.error || 'Unable to initialize payment.' };
-  return {
-    ok: true,
-    reference: data.reference,
-    txRef: data.tx_ref,
-    paymentLink: data.payment_link,
-    publicKey: data.public_key,
-  };
+export async function flutterwaveInitialize(amountNgn: number): Promise<{ ok: boolean; error?: string; paymentLink?: string }> {
+  const link = import.meta.env.VITE_FLUTTERWAVE_PAYMENT_LINK;
+  if (!link) return { ok: false, error: 'Payment link not configured.' };
+  return { ok: true, paymentLink: link };
 }
 
-export async function flutterwaveVerify(txRef: string): Promise<{ ok: boolean; error?: string; xena?: number }> {
-  const data = await postServerless('/api/flutterwave/verify', { tx_ref: txRef });
+export async function flutterwaveVerify(_txRef?: string): Promise<{ ok: boolean; error?: string; xena?: number }> {
+  const data = await postServerless('/api/flutterwave/verify', {});
   if (!data?.ok) return { ok: false, error: data?.error || 'Payment not confirmed.' };
   return { ok: true, xena: Number(data.xena || 0) };
 }

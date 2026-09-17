@@ -109,6 +109,19 @@ export async function findPendingPayment(provider: string, reference: string): P
   return data || null;
 }
 
+export async function findPendingPaymentByEmail(provider: string, email: string): Promise<any | null> {
+  const sb = requireSupabase();
+  const { data } = await sb
+    .from('pending_payments')
+    .select('*')
+    .eq('provider', provider)
+    .eq('email', email)
+    .order('createdAt', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data || null;
+}
+
 export async function updatePendingPayment(reference: string, updates: any): Promise<any | null> {
   const sb = requireSupabase();
   const { data, error } = await sb.from('pending_payments').update(updates).eq('reference', reference).select().maybeSingle();

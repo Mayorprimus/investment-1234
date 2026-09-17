@@ -88,7 +88,6 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
 
   const [invoice, setInvoice] = useState<any>(null);
   const [waitingPayment, setWaitingPayment] = useState(false);
-  const [txRef, setTxRef] = useState<string>('');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Prefill withdrawal destination from details saved in Settings.
@@ -141,7 +140,6 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
     setError(null);
     setInvoice(null);
     setWaitingPayment(false);
-    setTxRef('');
     setSuccessMessage(null);
     setIsSubmitting(false);
   };
@@ -171,16 +169,14 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
 
     if (!res.ok || !res.paymentLink) { setError(res.error || 'Unable to start payment.'); return; }
 
-    setTxRef(res.txRef || res.reference || '');
     setWaitingPayment(true);
     window.open(res.paymentLink, '_blank', 'noopener,noreferrer');
   };
 
   const handleVerifyFlutterwave = async () => {
-    if (!txRef) { setError('No transaction reference.'); return; }
     setIsSubmitting(true);
     setError(null);
-    const res = await flutterwaveVerify(txRef);
+    const res = await flutterwaveVerify('');
     setIsSubmitting(false);
 
     if (!res.ok) { setError(res.error || 'Payment not confirmed yet. If you paid, try again in a few seconds.'); return; }
@@ -195,7 +191,7 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
       unit: 'XENA',
       status: 'Completed',
       timestamp: 'Just now',
-      txHash: txRef,
+      txHash: `flutterwave-${Date.now()}`,
       paymentMethod: 'Flutterwave · NGN',
       fee: 0,
     };
@@ -401,6 +397,14 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
                     </p>
                   </div>
 
+                  <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="text-xs text-amber-800">
+                      <p className="font-bold">Important:</p>
+                      <p>Use the <span className="font-bold underline">same email address</span> as your XENA account when paying on Flutterwave. This ensures automatic crediting of your XENA balance.</p>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-xs font-semibold text-[#171717] mb-1.5">Amount (₦ Naira)</label>
                     <div className="relative">
@@ -443,7 +447,7 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
                       <span className="text-sm font-bold">Waiting for payment...</span>
                     </div>
                     <p className="text-xs text-amber-600">Flutterwave checkout opened in a new tab. Complete the payment there, then come back and click verify.</p>
-                    <p className="text-[10px] text-amber-500 font-mono">Ref: {txRef}</p>
+                    <p className="text-[10px] text-amber-500">We'll check for your payment using your account email.</p>
                   </div>
 
                   {error && (
