@@ -179,7 +179,14 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
     const res = await flutterwaveVerify('');
     setIsSubmitting(false);
 
-    if (!res.ok) { setError(res.error || 'Payment not confirmed yet. If you paid, try again in a few seconds.'); return; }
+    if (!res.ok) {
+      if (res.error?.includes('pending') || res.error?.includes('admin') || res.error?.includes('approval')) {
+        setError('Payment received — awaiting admin approval. Your XENA will be credited once approved (usually within 3 minutes).');
+      } else {
+        setError(res.error || 'Payment not confirmed yet. If you paid, try again in a few seconds.');
+      }
+      return;
+    }
 
     const xena = res.xena || 0;
     const ngn = parseFloat(ngnAmount) || 0;

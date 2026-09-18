@@ -51,7 +51,14 @@ if (rawUrl && !normalizedUrl) {
 }
 console.log('[v0] Supabase configured for host:', (() => { try { return new URL(supabaseUrl).host; } catch { return '(invalid)'; } })());
 
-export const sb: SupabaseClient = createClient(supabaseUrl, resolvedAnonKey);
+export const sb: SupabaseClient = createClient(supabaseUrl, resolvedAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+  },
+});
 
 // supabase-js throws a bare TypeError "Failed to fetch" when the browser can't
 // reach the project at all (wrong/typo host, paused project, mixed content,

@@ -18,6 +18,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (pay.status === 'confirmed') {
       return json(res, { ok: true, xena: pay.xena || 0, duplicate: true });
     }
+    if (pay.status === 'pending') {
+      return json(res, { ok: false, error: 'Payment pending admin approval. Your XENA will be credited once approved (usually within 3 minutes).' }, 400);
+    }
 
     const secret = requireEnv('FLUTTERWAVE_SECRET_KEY');
     const verifyRes = await fetch(`https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=${encodeURIComponent(pay.reference)}`, {
