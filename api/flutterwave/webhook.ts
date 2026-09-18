@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { readRawBody, getSetting, findPendingPayment, updatePendingPayment, creditUser, requireSupabase, getAppUrl } from '../_lib/helpers.js';
+import { readRawBody, getSetting, findPendingPayment, updatePendingPayment, requireSupabase, getAppUrl } from '../_lib/helpers.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -54,7 +54,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    if (verified && account) {
+    if (verified) {
       const rateSetting = await getSetting('xena_ngn_rate');
       const limits = await getSetting('limits');
       const rate = Number(rateSetting?.ngnRate ?? limits?.xenaNgnRate ?? 0.3333);
@@ -65,18 +65,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await updatePendingPayment(reference, { status: 'confirmed', xena });
       }
 
-      await creditUser(email, xena, {
-        title: 'Naira Deposit (Flutterwave)',
-        type: 'deposit',
-        paymentMethod: 'Flutterwave · NGN',
-        counterparty: 'Flutterwave',
-        notifTitle: 'Flutterwave Deposit Confirmed',
-        notifMessage: `Your NGN deposit was verified. ${xena.toLocaleString()} XENA has been credited to your balance.`,
-      });
-    } else if (verified && !account) {
-      const base = getAppUrl();
-      const adminUrl = base ? `${base}/admin` : 'admin panel';
-      console.warn(`Flutterwave webhook: payment for unknown email ${email}, reference ${reference}, amount ${amount}. Review in ${adminUrl}`);
+      if (account) {
+        await sb.from('deposits').insert({
+          id: `dep-${Date.now()}`,
+          email,
+          amount: amountNgn,
+          unit: 'NGN',
+          xena,
+          status: 'Pending',
+          method: 'Flutterwave',
+          reference,
+          created_at: new Date().toISOString(),
+          meta: { flutterwave_tx: tx },
+        });
+      } else {
+        const base = getAppUrl();
+        const adminUrl = base ? `${base}/admin` : 'admin panel';
+        console.warn(`Flutterwave webhook: payment for unknown email ${email}, reference ${reference}, amount ${amount}. Review in ${adminUrl}`);
+        
+        await sb.from('deposits').insert({
+          id: `dep-${Date.now()}`,
+          email,
+          amount: amountNgn,
+          unit: 'NGN',
+          xena,
+          status: 'Pending',
+          method: 'Flutterwave',
+          reference,
+          created_at: new Date().toISOString(),
+          meta: { flutterwave_tx: tx, unmatched: true },
+        });
+      }
     }
 
     return res.status(200).json({ ok: true });

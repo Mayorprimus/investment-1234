@@ -603,4 +603,26 @@ export async function cryptoCheckDeposit(paymentId: string): Promise<{ ok: boole
   return { ok: true, status: data?.status || 'waiting', xena: data?.xena != null ? Number(data.xena) : undefined };
 }
 
-export { mapVault };
+export async function adminGetDeposits(): Promise<{ ok: boolean; error?: string; deposits?: any[] }> {
+  try {
+    const res = await fetch('/api/admin/deposits');
+    const data = await res.json();
+    return data;
+  } catch {
+    return { ok: false, error: 'Network error.' };
+  }
+}
+
+export async function adminDecideDeposit(depositId: string, decision: 'approved' | 'rejected', note?: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch('/api/admin/deposits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ depositId, decision, note }),
+    });
+    const data = await res.json();
+    return data;
+  } catch {
+    return { ok: false, error: 'Network error.' };
+  }
+}

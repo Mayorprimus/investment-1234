@@ -44,7 +44,7 @@ import {
   Inbox,
   RotateCcw,
 } from 'lucide-react';
-import { getSupportConversations, replySupportConversation, resolveSupportConversation, replaceAnnouncements, replacePromos, updateAdminSettings } from '../lib/api';
+import { getSupportConversations, replySupportConversation, resolveSupportConversation, replaceAnnouncements, replacePromos, updateAdminSettings, adminGetDeposits, adminDecideDeposit } from '../lib/api';
 import type { SupportConversation } from '../types';
 
 interface Props {
@@ -958,16 +958,32 @@ export const AdminPanel: React.FC<Props> = ({
                               {d.status === 'Pending' ? (
                                 <div className="flex items-center gap-1.5">
                                   <button
-                                    onClick={() => {
-                                      setDeposits((prev) => prev.map((x) => x.id === d.id ? { ...x, status: 'Completed' } : x));
-                                      if (matchedRef) {
-                                        setBonusLog((prev) => [{ id: `b-${Date.now()}`, code: matchedRef.refCode, name: matchedRef.name, xena: 100, time: 'Just now' }, ...prev]);
-                                        notify(`${d.user} deposited — +100 XENA bonus auto-approved to ${matchedRef.name}'s referral`);
+                                    onClick={async () => {
+                                      const res = await adminDecideDeposit(d.id, 'approved');
+                                      if (res.ok) {
+                                        setDeposits((prev) => prev.map((x) => x.id === d.id ? { ...x, status: 'Completed' } : x));
+                                        if (matchedRef) {
+                                          setBonusLog((prev) => [{ id: `b-${Date.now()}`, code: matchedRef.refCode, name: matchedRef.name, xena: 100, time: 'Just now' }, ...prev]);
+                                          notify(`${d.user} deposited — +100 XENA bonus auto-approved to ${matchedRef.name}'s referral`);
+                                        } else {
+                                          notify('Deposit approved');
+                                        }
                                       } else {
-                                        notify('Deposit approved');
+                                        notify(res.error || 'Failed to approve');
                                       }
                                     }}
                                     className="px-2 py-1 rounded-lg bg-emerald-50 text-[#16A34A] text-[10px] font-bold border border-emerald-100 cursor-pointer">Approve</button>
+                                  <button
+                                    onClick={async () => {
+                                      const res = await adminDecideDeposit(d.id, 'rejected');
+                                      if (res.ok) {
+                                        setDeposits((prev) => prev.map((x) => x.id === d.id ? { ...x, status: 'Rejected' } : x));
+                                        notify('Deposit rejected');
+                                      } else {
+                                        notify(res.error || 'Failed to reject');
+                                      }
+                                    }}
+                                    className="px-2 py-1 rounded-lg bg-red-50 text-red-600 text-[10px] font-bold border border-red-100 cursor-pointer">Reject</button>
                                 </div>
                               ) : (
                                 <span className="text-[9px] text-[#9CA3AF]">{d.time}</span>
