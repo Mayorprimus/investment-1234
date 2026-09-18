@@ -8,7 +8,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const token = String(body?.token || '');
     if (!token) return json(res, { ok: false, error: 'Not authenticated.' }, 401);
 
-    const user = getUserByToken(token);
+    const user = await getUserByToken(token);
     if (!user) return json(res, { ok: false, error: 'Invalid session.' }, 401);
 
     const pay = await findPendingPaymentByEmail('flutterwave', String(user.email || '').toLowerCase());
