@@ -1,5 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { json, readJsonBody, handleError, requireAdminToken, requireSupabase } from '../_lib/helpers.js';
+import { json, readJsonBody, handleError, requireAdminToken, requireSupabase, creditUser, updateBlobDeposit } from '../_lib/helpers.js';
+
+const toDisplayStatus = (status: string): string => {
+  const s = String(status || '').toLowerCase();
+  if (s === 'pending') return 'Pending';
+  if (s === 'completed' || s === 'confirmed') return 'Completed';
+  if (s === 'rejected') return 'Rejected';
+  return status || 'Pending';
+};
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -7,9 +15,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const sb = requireSupabase();
 
     if (req.method === 'GET') {
-      const { data, error } = await sb.from('deposits').select('*').order('created_at', { ascending: false });
+      const { data, error } = await sb
+        .from('payments')
+        .select('*')
+        .eq('provider', 'flutterwave')
+        .order('created_at', { ascending: false });
       if (error) throw error;
-      return json(res, { ok: true, deposits: data || [] });
+      const deposits = (data || []).map((p: any) => ({
+        id: p.id,
+        user: p.email ? String(p.email).split('@')[0] : 'Unknown',
+        email: p.email,
+        method: 'Flutterwave · NGN',
+        amount: Number(p.amount || 0),
+        unit: p.currency || 'NGN',
+        xena: Number(p.xena || 0),
+        status: toDisplayStatus(p.status),
+        reference: p.reference,
+        created_at: p.created_at,
+      }));
+      return json(res, { ok: true, deposits });
     }
 
     if (req.method === 'POST') {
@@ -17,53 +41,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { depositId, decision, note } = body;
       if (!depositId || !decision) return json(res, { ok: false, error: 'Missing depositId or decision.' }, 400);
 
-      const { data: deposit, error: depError } = await sb.from('deposits').select('*').eq('id', depositId).maybeSingle();
+      const { data: deposit, error: depError } = await sb.from('payments').select('*').eq('id', depositId).maybeSingle();
       if (depError) throw depError;
       if (!deposit) return json(res, { ok: false, error: 'Deposit not found.' }, 404);
-      if (deposit.status !== 'Pending') return json(res, { ok: false, error: 'Already processed.' }, 400);
+      if (deposit.status === 'completed' || deposit.status === 'rejected') {
+        return json(res, { ok: false, error: 'Already processed.' }, 400);
+      }
 
       if (decision === 'approved') {
-        const { error: upErr } = await sb.from('deposits').update({ status: 'Completed', admin_note: note || null, decided_at: new Date().toISOString() }).eq('id', depositId);
+        const email = String(deposit.email || '').toLowerCase();
+        const xena = Number(deposit.xena || 0);
+
+        await creditUser(email, xena, {
+          title: 'Naira Deposit (Flutterwave)',
+          type: 'deposit',
+          paymentMethod: 'Flutterwave · NGN',
+          counterparty: 'Flutterwave',
+          reference: deposit.reference,
+          amount: Number(deposit.amount || 0),
+          notifTitle: 'Deposit Approved',
+          notifMessage: `Your NGN deposit of ₦${Number(deposit.amount || 0).toLocaleString()} was approved. ${xena.toLocaleString()} XENA credited.`,
+        });
+
+        const { error: upErr } = await sb
+          .from('payments')
+          .update({ status: 'completed', meta: { ...(deposit.meta || {}), admin_note: note || null }, confirmed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq('id', depositId);
         if (upErr) throw upErr;
 
-        const { data: account } = await sb.from('accounts').select('*').eq('email', deposit.email).maybeSingle();
-        if (account) {
-          const newAvailableXena = (account.balances?.availableXena || 0) + deposit.xena;
-          const newTotalBalance = (account.balances?.totalBalance || 0) + deposit.xena;
-
-          const newTx = {
-            id: `tx-${Date.now()}-${Math.floor(Math.random() * 999)}`,
-            title: 'Naira Deposit (Flutterwave)',
-            type: 'deposit',
-            amount: deposit.xena,
-            unit: 'XENA',
-            status: 'Completed',
-            timestamp: new Date().toLocaleString(),
-            fee: 0,
-            reference: deposit.reference,
-            paymentMethod: 'Flutterwave · NGN',
-          };
-
-          const newNotification = {
-            id: `notif-dep-${Date.now()}`,
-            title: 'Deposit Approved',
-            message: `Your NGN deposit of ₦${deposit.amount.toLocaleString()} was approved. ${deposit.xena.toLocaleString()} XENA credited.`,
-            timestamp: 'Just now',
-            read: false,
-            type: 'transaction',
-          };
-
-          await sb.from('accounts').update({
-            balances: { ...account.balances, availableXena: newAvailableXena, totalBalance: newTotalBalance },
-            transactions: [newTx, ...(account.transactions || [])],
-            notifications: [newNotification, ...(account.notifications || [])],
-          }).eq('email', deposit.email);
-        }
+        await updateBlobDeposit(depositId, { status: 'Completed', time: 'Just now' }).catch(() => {});
         return json(res, { ok: true });
       }
 
       if (decision === 'rejected') {
-        await sb.from('deposits').update({ status: 'Rejected', admin_note: note || null, decided_at: new Date().toISOString() }).eq('id', depositId);
+        await sb
+          .from('payments')
+          .update({ status: 'rejected', meta: { ...(deposit.meta || {}), admin_note: note || null }, updated_at: new Date().toISOString() })
+          .eq('id', depositId);
+        await updateBlobDeposit(depositId, { status: 'Rejected', time: 'Just now' }).catch(() => {});
         return json(res, { ok: true });
       }
 

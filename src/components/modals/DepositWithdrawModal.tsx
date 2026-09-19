@@ -186,15 +186,15 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
   const handleVerifyFlutterwave = async () => {
     setIsSubmitting(true);
     setError(null);
-    const res = await flutterwaveVerify('');
+    const res = await flutterwaveVerify(ngnDeposit);
     setIsSubmitting(false);
 
+    if (res.pending) {
+      setError('Payment submitted — awaiting admin approval. Your XENA will be credited once approved.');
+      return;
+    }
     if (!res.ok) {
-      if (res.error?.includes('pending') || res.error?.includes('admin') || res.error?.includes('approval')) {
-        setError('Payment received — awaiting admin approval. Your XENA will be credited once approved (usually within 3 minutes).');
-      } else {
-        setError(res.error || 'Payment not confirmed yet. If you paid, try again in a few seconds.');
-      }
+      setError(res.error || 'Payment not confirmed yet. If you paid, try again in a few seconds.');
       return;
     }
 
@@ -475,7 +475,7 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
 
                   <button onClick={handleVerifyFlutterwave} disabled={isSubmitting}
                     className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-[#16A34A] to-[#22C55E] hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                    {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying...</> : <><Check className="w-4 h-4" /> I've Paid — Verify</>}
+                    {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Validating payment...</> : <><Check className="w-4 h-4" /> I've Paid — Verify</>}
                   </button>
 
                   <button onClick={() => { setWaitingPayment(false); setTxRef(''); resetState(); }} className="w-full py-2 text-xs font-bold text-[#6B7280] hover:text-[#171717] transition-colors">Cancel</button>

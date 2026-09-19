@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { readRawBody, getSetting, findPendingPayment, updatePendingPayment, requireSupabase, getAppUrl } from '../_lib/helpers.js';
+import { readRawBody, getSetting, findPendingPayment, findPendingPaymentByEmail, updatePendingPayment, requireSupabase, savePendingPayment, appendBlobDeposit } from '../_lib/helpers.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -32,10 +32,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const email = String(tx.customer?.email || '').trim().toLowerCase();
     if (!email) return res.status(200).json({ ok: true });
 
-    const sb = requireSupabase();
-
-    const { data: account } = await sb.from('accounts').select('*').eq('email', email).maybeSingle();
-
     let amount = amountNgn;
     let verified = false;
     const secret = process.env.FLUTTERWAVE_SECRET_KEY;
@@ -60,41 +56,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const rate = Number(rateSetting?.ngnRate ?? limits?.xenaNgnRate ?? 0.3333);
       const xena = Math.round((amount / rate) * 10000) / 10000;
 
-      const pay = await findPendingPayment('flutterwave', reference);
-      if (pay && pay.status !== 'confirmed') {
-        await updatePendingPayment(reference, { status: 'confirmed', xena });
+      const byRef = await findPendingPayment('flutterwave', reference);
+      if (byRef) {
+        if (byRef.status !== 'confirmed' && byRef.status !== 'completed') {
+          await updatePendingPayment(reference, { status: 'pending', xena, amount: amountNgn, email });
+        }
+      } else {
+        const byEmail = await findPendingPaymentByEmail('flutterwave', email);
+        if (byEmail && byEmail.status === 'pending') {
+          // Reconcile the deposit the user already submitted from "I've Paid".
+          await updatePendingPayment(byEmail.reference, { xena, amount: amountNgn, meta: { ...(byEmail.meta || {}), flutterwave_tx: tx } });
+        } else {
+          await savePendingPayment({
+            reference,
+            provider: 'flutterwave',
+            email,
+            amount: amountNgn,
+            currency: 'NGN',
+            xena,
+            status: 'pending',
+            meta: { flutterwave_tx: tx },
+          }).catch(async (e) => {
+            console.warn('Flutterwave webhook: savePendingPayment failed', e?.message || e);
+          });
+        }
       }
 
-      if (account) {
-        await sb.from('deposits').insert({
-          id: `dep-${Date.now()}`,
-          email,
-          amount: amountNgn,
-          unit: 'NGN',
-          xena,
-          status: 'Pending',
-          method: 'Flutterwave',
-          reference,
-          created_at: new Date().toISOString(),
-          meta: { flutterwave_tx: tx },
-        });
-      } else {
-        const base = getAppUrl();
-        const adminUrl = base ? `${base}/admin` : 'admin panel';
-        console.warn(`Flutterwave webhook: payment for unknown email ${email}, reference ${reference}, amount ${amount}. Review in ${adminUrl}`);
-        
-        await sb.from('deposits').insert({
-          id: `dep-${Date.now()}`,
-          email,
-          amount: amountNgn,
-          unit: 'NGN',
-          xena,
-          status: 'Pending',
-          method: 'Flutterwave',
-          reference,
-          created_at: new Date().toISOString(),
-          meta: { flutterwave_tx: tx, unmatched: true },
-        });
+      try {
+        const { data: adminDeposits } = await requireSupabase().from('payments').select('id,email,amount,currency,xena,status,reference,created_at').eq('provider', 'flutterwave').eq('email', email).order('created_at', { ascending: false }).limit(1);
+        const paymentRow = adminDeposits?.[0];
+        if (paymentRow) {
+          const { data: profile } = await requireSupabase().from('profiles').select('name').eq('email', email).maybeSingle();
+          await appendBlobDeposit({
+            id: paymentRow.id,
+            user: profile?.name || email.split('@')[0],
+            email,
+            method: 'Flutterwave · NGN',
+            amount: Math.round(amountNgn / rate),
+            unit: 'USD',
+            xena,
+            status: paymentRow.status === 'pending' ? 'Pending' : 'Completed',
+            time: 'Just now',
+            reference: paymentRow.reference,
+          });
+        }
+      } catch (e) {
+        console.warn('Flutterwave webhook: admin ledger mirror failed', e?.message || e);
       }
     }
 

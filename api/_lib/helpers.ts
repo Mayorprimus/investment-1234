@@ -84,11 +84,14 @@ export function handleError(e: unknown, res: VercelResponse): void {
 
 export async function getUserByToken(token: string): Promise<any | null> {
   if (!token) return null;
-  const sb = requireSupabase();
-  const { data: tokenRow } = await sb.from('tokens').select('email').eq('token', token).maybeSingle();
-  if (!tokenRow?.email) return null;
-  const { data: account } = await sb.from('accounts').select('*').eq('email', tokenRow.email).maybeSingle();
-  return account || null;
+  try {
+    const sb = requireSupabase();
+    const { data, error } = await sb.auth.getUser(token);
+    if (error || !data?.user) return null;
+    return data.user;
+  } catch {
+    return null;
+  }
 }
 
 export async function getSetting(key: string): Promise<any> {
@@ -99,24 +102,35 @@ export async function getSetting(key: string): Promise<any> {
 
 export async function savePendingPayment(payment: any): Promise<void> {
   const sb = requireSupabase();
-  const { error } = await sb.from('pending_payments').insert(payment);
+  const row = {
+    provider: payment.provider,
+    reference: payment.reference,
+    email: String(payment.email || '').toLowerCase(),
+    amount: Number(payment.amount || 0),
+    currency: payment.currency || payment.unit || 'USD',
+    xena: Number(payment.xena || 0),
+    status: payment.status || 'pending',
+    user_id: payment.user_id || null,
+    meta: payment.meta || {},
+  };
+  const { error } = await sb.from('payments').upsert(row, { onConflict: 'reference' });
   if (error) throw error;
 }
 
 export async function findPendingPayment(provider: string, reference: string): Promise<any | null> {
   const sb = requireSupabase();
-  const { data } = await sb.from('pending_payments').select('*').eq('provider', provider).eq('reference', reference).maybeSingle();
+  const { data } = await sb.from('payments').select('*').eq('provider', provider).eq('reference', reference).maybeSingle();
   return data || null;
 }
 
 export async function findPendingPaymentByEmail(provider: string, email: string): Promise<any | null> {
   const sb = requireSupabase();
   const { data } = await sb
-    .from('pending_payments')
+    .from('payments')
     .select('*')
     .eq('provider', provider)
-    .eq('email', email)
-    .order('createdAt', { ascending: false })
+    .eq('email', String(email || '').toLowerCase())
+    .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
   return data || null;
@@ -124,18 +138,30 @@ export async function findPendingPaymentByEmail(provider: string, email: string)
 
 export async function updatePendingPayment(reference: string, updates: any): Promise<any | null> {
   const sb = requireSupabase();
-  const { data, error } = await sb.from('pending_payments').update(updates).eq('reference', reference).select().maybeSingle();
+  const patch: Record<string, unknown> = {};
+  if (updates.status != null) patch.status = updates.status;
+  if (updates.xena != null) patch.xena = Number(updates.xena);
+  if (updates.amount != null) patch.amount = Number(updates.amount);
+  if (updates.email != null) patch.email = String(updates.email).toLowerCase();
+  if (updates.meta != null) patch.meta = updates.meta;
+  if (updates.status === 'confirmed' || updates.status === 'completed') {
+    patch.confirmed_at = new Date().toISOString();
+  } else {
+    patch.updated_at = new Date().toISOString();
+  }
+  const { data, error } = await sb.from('payments').update(patch).eq('reference', reference).select().maybeSingle();
   if (error) throw error;
   return data || null;
 }
 
 export async function creditUser(email: string, xenaAmount: number, txData: any): Promise<boolean> {
   const sb = requireSupabase();
-  const { data: account } = await sb.from('accounts').select('*').eq('email', email).maybeSingle();
-  if (!account) return false;
+  const lowerEmail = String(email || '').toLowerCase();
+  const { data: profile } = await sb.from('profiles').select('*').eq('email', lowerEmail).maybeSingle();
+  if (!profile) return false;
 
-  const newAvailableXena = (account.balances?.availableXena || 0) + xenaAmount;
-  const newTotalBalance = (account.balances?.totalBalance || 0) + xenaAmount;
+  const newAvailableXena = (profile.balances?.availableXena || 0) + xenaAmount;
+  const newTotalBalance = (profile.balances?.totalBalance || 0) + xenaAmount;
 
   const newTx = {
     id: `tx-${Date.now()}-${Math.floor(Math.random() * 999)}`,
@@ -156,31 +182,49 @@ export async function creditUser(email: string, xenaAmount: number, txData: any)
     type: 'transaction',
   };
 
-  const { error: updateError } = await sb.from('accounts').update({
+  const { error: updateError } = await sb.from('profiles').update({
     balances: {
-      ...account.balances,
+      ...profile.balances,
       availableXena: newAvailableXena,
       totalBalance: newTotalBalance,
     },
-    transactions: [newTx, ...(account.transactions || [])],
-    notifications: [newNotification, ...(account.notifications || [])],
-  }).eq('email', email);
+    transactions: [newTx, ...(profile.transactions || [])],
+    notifications: [newNotification, ...(profile.notifications || [])],
+  }).eq('email', lowerEmail);
 
   if (updateError) throw updateError;
-
-  // Also insert into deposits table for record-keeping
-  const depositRecord = {
-    id: `dep-${Date.now()}`,
-    email,
-    amount: txData.amount || 0,
-    unit: txData.unit || 'XENA',
-    xena: xenaAmount,
-    status: 'Completed',
-    method: txData.method || 'Deposit',
-    reference: txData.reference,
-    created_at: new Date().toISOString(),
-  };
-  await sb.from('deposits').insert(depositRecord);
-
   return true;
+}
+
+// ---- Admin dashboard blob (admin_state.deposits) helpers ----
+// The admin portal draws its Deposit Ledger from admin_state.blob.deposits,
+// so keep online payments mirrored there (id = payments.id).
+
+export async function getAdminBlob(): Promise<any> {
+  const sb = requireSupabase();
+  const { data } = await sb.from('admin_state').select('blob').eq('id', 1).maybeSingle();
+  return data?.blob || {};
+}
+
+export async function setAdminBlob(blob: any): Promise<void> {
+  const sb = requireSupabase();
+  const { error } = await sb.from('admin_state').upsert({ id: 1, blob, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+  if (error) throw error;
+}
+
+export async function appendBlobDeposit(entry: any): Promise<void> {
+  const blob = await getAdminBlob();
+  const deposits = Array.isArray(blob.deposits) ? blob.deposits : [];
+  const exists = deposits.some((d: any) => d.id === entry.id || (entry.reference && d.reference === entry.reference));
+  if (!exists) {
+    deposits.push(entry);
+    await setAdminBlob({ ...blob, deposits });
+  }
+}
+
+export async function updateBlobDeposit(matchId: string, patch: any): Promise<void> {
+  const blob = await getAdminBlob();
+  const deposits = Array.isArray(blob.deposits) ? blob.deposits : [];
+  const next = deposits.map((d: any) => (d.id === matchId ? { ...d, ...patch } : d));
+  await setAdminBlob({ ...blob, deposits: next });
 }

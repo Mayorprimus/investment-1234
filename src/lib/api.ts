@@ -581,9 +581,9 @@ export async function flutterwaveInitialize(amountNgn: number): Promise<{ ok: bo
   return { ok: true, paymentLink: link };
 }
 
-export async function flutterwaveVerify(_txRef?: string): Promise<{ ok: boolean; error?: string; xena?: number }> {
-  const data = await postServerless('/api/flutterwave/verify', {});
-  if (!data?.ok) return { ok: false, error: data?.error || 'Payment not confirmed.' };
+export async function flutterwaveVerify(amountNgn?: number): Promise<{ ok: boolean; error?: string; xena?: number; pending?: boolean }> {
+  const data = await postServerless('/api/flutterwave/verify', { amountNgn: Number(amountNgn || 0) });
+  if (!data?.ok) return { ok: false, error: data?.error || 'Payment not confirmed.', pending: !!data?.pending };
   return { ok: true, xena: Number(data.xena || 0) };
 }
 

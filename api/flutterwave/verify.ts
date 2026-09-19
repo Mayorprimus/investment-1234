@@ -1,5 +1,60 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireEnv, json, readJsonBody, handleError, getUserByToken, getSetting, findPendingPayment, findPendingPaymentByEmail, updatePendingPayment, creditUser } from '../_lib/helpers.js';
+import {
+  json,
+  readJsonBody,
+  handleError,
+  getUserByToken,
+  getSetting,
+  findPendingPaymentByEmail,
+  requireSupabase,
+  savePendingPayment,
+  appendBlobDeposit,
+} from '../_lib/helpers.js';
+
+const PENDING_MESSAGE = 'Payment received — awaiting admin approval. Your XENA will be credited once approved (usually within a few minutes).';
+
+async function registerPendingDeposit(email: string, amountNgn: number): Promise<number> {
+  const rateSetting = await getSetting('xena_ngn_rate');
+  const limits = await getSetting('limits');
+  const rate = Number(rateSetting?.ngnRate ?? limits?.xenaNgnRate ?? 0.3333);
+  const xena = Math.round((amountNgn / rate) * 10000) / 10000;
+  const reference = `fw-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+
+  await savePendingPayment({
+    provider: 'flutterwave',
+    reference,
+    email,
+    amount: amountNgn,
+    currency: 'NGN',
+    xena,
+    status: 'pending',
+    meta: { source: 'user-verified', submitted_at: new Date().toISOString() },
+  });
+
+  try {
+    const sb = requireSupabase();
+    const { data: paymentRow } = await sb.from('payments').select('id,status').eq('reference', reference).maybeSingle();
+    const { data: profile } = await sb.from('profiles').select('name').eq('email', email).maybeSingle();
+    if (paymentRow) {
+      await appendBlobDeposit({
+        id: paymentRow.id,
+        user: profile?.name || email.split('@')[0],
+        email,
+        method: 'Flutterwave · NGN',
+        amount: Math.round(amountNgn / rate),
+        unit: 'USD',
+        xena,
+        status: 'Pending',
+        time: 'Just now',
+        reference,
+      });
+    }
+  } catch (e) {
+    console.warn('verify: admin ledger mirror failed', (e as any)?.message || e);
+  }
+
+  return xena;
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -9,53 +64,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!token) return json(res, { ok: false, error: 'Not authenticated.' }, 401);
 
     const user = await getUserByToken(token);
-    if (!user) return json(res, { ok: false, error: 'Invalid session.' }, 401);
+    if (!user?.email) return json(res, { ok: false, error: 'Invalid session.' }, 401);
 
-    const pay = await findPendingPaymentByEmail('flutterwave', String(user.email || '').toLowerCase());
-    if (!pay || !pay.reference) {
-      return json(res, { ok: false, error: 'No pending Flutterwave payment found for your account. Complete the payment first.' }, 404);
-    }
-    if (pay.status === 'confirmed') {
+    const email = String(user.email).toLowerCase();
+    const amountNgn = Number(body?.amountNgn || 0);
+    const pay = await findPendingPaymentByEmail('flutterwave', email);
+
+    if (pay && (pay.status === 'confirmed' || pay.status === 'completed')) {
       return json(res, { ok: true, xena: pay.xena || 0, duplicate: true });
     }
-    if (pay.status === 'pending') {
-      return json(res, { ok: false, error: 'Payment pending admin approval. Your XENA will be credited once approved (usually within 3 minutes).' }, 400);
+
+    if (pay && pay.status === 'pending') {
+      return json(res, { ok: false, pending: true, xena: pay.xena || 0, error: PENDING_MESSAGE }, 202);
     }
 
-    const secret = requireEnv('FLUTTERWAVE_SECRET_KEY');
-    const verifyRes = await fetch(`https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=${encodeURIComponent(pay.reference)}`, {
-      headers: { Authorization: `Bearer ${secret}` },
-    });
-    const verifyData = await verifyRes.json();
-    if (!verifyRes.ok || verifyData?.status !== 'success') {
-      return json(res, { ok: false, error: verifyData?.message || 'Payment not confirmed.' }, 400);
+    // No (active) payment on record — register one from the amount the user says
+    // they paid so it surfaces in the admin portal for manual approval.
+    if (amountNgn > 0) {
+      const xena = await registerPendingDeposit(email, amountNgn);
+      return json(res, { ok: false, pending: true, xena, error: PENDING_MESSAGE }, 202);
     }
 
-    const tx = verifyData.data;
-    if (tx.status !== 'successful') {
-      return json(res, { ok: false, error: `Payment status: ${tx.status}` }, 400);
-    }
-    if (tx.currency !== 'NGN') {
-      return json(res, { ok: false, error: 'Unexpected currency.' }, 400);
-    }
-
-    const amountNgn = Number(tx.amount || 0);
-    const rateSetting = await getSetting('xena_ngn_rate');
-    const limits = await getSetting('limits');
-    const rate = Number(rateSetting?.ngnRate ?? limits?.xenaNgnRate ?? 0.3333);
-    const xenaAmount = Math.round((amountNgn / rate) * 10000) / 10000;
-
-    await updatePendingPayment(pay.reference, { status: 'confirmed', xena: xenaAmount });
-    await creditUser(String(user.email || ''), xenaAmount, {
-      title: 'Naira Deposit (Flutterwave)',
-      type: 'deposit',
-      paymentMethod: 'Flutterwave · NGN',
-      counterparty: 'Flutterwave',
-      notifTitle: 'Flutterwave Deposit Confirmed',
-      notifMessage: `Your NGN deposit was verified. ${xenaAmount.toLocaleString()} XENA has been credited to your balance.`,
-    });
-
-    return json(res, { ok: true, xena: xenaAmount });
+    return json(res, { ok: false, error: 'No pending Flutterwave payment found for your account. Complete the payment first.' }, 404);
   } catch (e) {
     return handleError(e, res);
   }
