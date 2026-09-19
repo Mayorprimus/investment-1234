@@ -445,7 +445,7 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
                     <div className="flex items-center gap-2 text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-lg p-2.5">
                       <AlertCircle className="w-4 h-4 shrink-0" /><span>{error}</span>
                     </div>
-                  ))
+                  )}
 
                   <button type="submit" disabled={isSubmitting || ngnDeposit < minDeposit}
                     className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-[#7C3AED] to-[#A855F7] hover:shadow-[0_4px_16px_rgba(109,40,217,0.3)] hover:scale-[1.01] transition-all disabled:opacity-50 flex items-center justify-center gap-2">
