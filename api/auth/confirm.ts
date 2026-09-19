@@ -13,7 +13,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const sb = await getServiceClient();
     const { data: page, error } = await sb.auth.admin.listUsers({ page: 1, perPage: 1000 });
     if (error) return json(res, { ok: false, error: error.message }, 500);
-    const user = page?.users?.find((u) => u.email?.toLowerCase() === email);
+    const user = (page?.users || []).find((u: any) => u.email?.toLowerCase() === email);
     if (!user) return json(res, { ok: false, error: 'User not found.' }, 404);
 
     const { error: updateErr } = await sb.auth.admin.updateUserById(user.id, { email_confirm: true });

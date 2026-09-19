@@ -6,7 +6,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== 'POST') return json(res, { ok: false, error: 'Method not allowed.' }, 405);
     const raw = await readRawBody(req);
-    const signature = req.headers['x-nowpayments-sig'] || '';
+    const signature = Array.isArray(req.headers['x-nowpayments-sig']) ? req.headers['x-nowpayments-sig'][0] : (req.headers['x-nowpayments-sig'] || '');
     const secret = requireEnv('NOWPAYMENTS_IPN_SECRET');
 
     if (!signature) return json(res, { ok: false, error: 'Missing signature.' }, 401);
