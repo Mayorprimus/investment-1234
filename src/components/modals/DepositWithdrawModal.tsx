@@ -65,6 +65,7 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
   xenaUsdPrice,
   limits,
   email,
+  country,
   savedBankDetails,
   savedWallets,
   onSuccess,

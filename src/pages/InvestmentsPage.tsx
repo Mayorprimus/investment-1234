@@ -110,6 +110,7 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
   catalog,
   onSelectPlan,
   onStakeNewPlan,
+  user,
 }) => {
   const [calcAmount, setCalcAmount] = useState<number>(1000);
   const [calcDuration, setCalcDuration] = useState<number>(14);
