@@ -30,6 +30,7 @@ interface DepositWithdrawModalProps {
   xenaUsdPrice: number;
   limits?: { min_deposit_ngn?: number; min_withdrawal_ngn?: number };
   email?: string;
+  country?: string;
   savedBankDetails?: SavedBankDetail[];
   savedWallets?: SavedWalletAddress[];
   onSuccess: (amountChange: number, newTx: Transaction) => void;
@@ -121,11 +122,19 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
   }, [withdrawCoin, savedWallets]);
 
   const rate = Math.max(0.0001, xenaNgnRate);
-  const minDeposit = limits?.min_deposit_ngn ?? 3000;
-  const minWithdrawal = limits?.min_withdrawal_ngn ?? 3000;
+  const isNigeria = country?.toLowerCase() === 'nigeria';
+  const minDepositNgn = limits?.min_deposit_ngn ?? 5000;
+  const minWithdrawalNgn = limits?.min_withdrawal_ngn ?? 5000;
+  const minDepositUsd = Math.round(minDepositNgn / rate);
+  const minWithdrawalUsd = Math.round(minWithdrawalNgn / rate);
+
+  const minDeposit = isNigeria ? minDepositNgn : minDepositUsd;
+  const minWithdrawal = isNigeria ? minWithdrawalNgn : minWithdrawalUsd;
 
   const xenaFromNgn = (n: number) => Math.round((n / rate) * 10000) / 10000;
   const fmtNgn = (n: number) => `₦${Math.round(n).toLocaleString('en-US')}`;
+  const fmtUsd = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
+  const fmtAmount = isNigeria ? fmtNgn : fmtUsd;
   const ngnFromXena = (x: number) => Math.round(x * rate);
 
   if (!isOpen) return null;
@@ -160,7 +169,7 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
     e.preventDefault();
     const ngn = parseFloat(ngnAmount);
     if (isNaN(ngn) || ngn <= 0) { setError('Enter a valid amount.'); return; }
-    if (ngn < minDeposit) { setError(`Minimum deposit is ${fmtNgn(minDeposit)}.`); return; }
+    if (ngn < minDeposit) { setError(`Minimum deposit is ${fmtAmount(minDeposit)}.`); return; }
 
     setIsSubmitting(true);
     setError(null);
@@ -413,18 +422,18 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">Amount (₦ Naira)</label>
+<label className="block text-xs font-semibold text-[#171717] mb-1.5">Amount ({isNigeria ? '₦ Naira' : '$ USD'})</label>
                     <div className="relative">
                       <Banknote className="w-4 h-4 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2" />
                       <input type="number" value={ngnAmount} onChange={(e) => setNgnAmount(e.target.value)}
                         min={minDeposit} step="any" required
                         className="w-full px-4 pl-9 py-2.5 text-base font-semibold text-[#171717] bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl focus:outline-none focus:border-[#7C3AED] focus:bg-white transition-all pr-16"
                         placeholder="0.00" />
-                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 font-bold text-xs text-[#6D28D9]">₦</span>
+                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 font-bold text-xs text-[#6D28D9]">{isNigeria ? '₦' : '$'}</span>
                     </div>
                     <div className="flex items-center justify-between text-xs mt-1.5">
-                      <span className="text-[#6B7280]">Min: {fmtNgn(minDeposit)}</span>
-                      <span className="font-semibold text-[#6D28D9]">1 XENA ≈ {fmtNgn(rate)}</span>
+                      <span className="text-[#6B7280]">Min: {fmtAmount(minDeposit)}</span>
+                      <span className="font-semibold text-[#6D28D9]">1 XENA ≈ {isNigeria ? fmtNgn(rate) : fmtUsd(1 * xenaUsdPrice)}</span>
                     </div>
                     <div className="flex items-center justify-between text-xs font-bold text-[#171717] bg-emerald-50 border border-emerald-100 rounded-lg p-2 mt-1.5">
                       <span>You receive</span>
@@ -436,11 +445,11 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
                     <div className="flex items-center gap-2 text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-lg p-2.5">
                       <AlertCircle className="w-4 h-4 shrink-0" /><span>{error}</span>
                     </div>
-                  )}
+                  ))
 
                   <button type="submit" disabled={isSubmitting || ngnDeposit < minDeposit}
                     className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-[#7C3AED] to-[#A855F7] hover:shadow-[0_4px_16px_rgba(109,40,217,0.3)] hover:scale-[1.01] transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                    {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Initializing...</> : <>Pay {fmtNgn(ngnDeposit)} via Flutterwave</>}
+                    {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Initializing...</> : <>Pay {fmtAmount(ngnDeposit)} via Flutterwave</>}
                   </button>
                 </form>
               )}

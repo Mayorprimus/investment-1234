@@ -3,6 +3,7 @@ import { UserProfile, UserBalances, MarketStats, Transaction, InvestmentPlan, P2
 export const INITIAL_USER_PROFILE: UserProfile = {
   name: 'Alex Morgan',
   email: 'alex.morgan@xena.fi',
+  country: 'Nigeria',
   kycTier: 'Tier 2 (Verified)',
   xenaId: 'XN-8492048',
   xenaCode: 'xena-19274404',

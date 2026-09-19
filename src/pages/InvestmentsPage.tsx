@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { TrendingUp, ShieldCheck, Plus, Sparkles, Check, Calculator, Headphones, LifeBuoy, MessageCircle, Mail, ChevronRight, Info, Layers } from 'lucide-react';
-import { InvestmentPlan, UserBalances, VaultPackage } from '../types';
+import { InvestmentPlan, UserBalances, VaultPackage, UserProfile } from '../types';
 
 interface InvestmentsPageProps {
   plans: InvestmentPlan[];
@@ -8,6 +8,7 @@ interface InvestmentsPageProps {
   catalog?: VaultPackage[];
   onSelectPlan: (plan: InvestmentPlan) => void;
   onStakeNewPlan: (plan: InvestmentPlan) => boolean;
+  user?: UserProfile;
 }
 
 const CATEGORY_META: Record<string, { label: string; accent: string; grad: string; glow: string }> = {
@@ -117,8 +118,14 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
   const [claimedNotice, setClaimedNotice] = useState<string | null>(null);
   const [stakedNotice, setStakedNotice] = useState<string | null>(null);
   const [showSupportModal, setShowSupportModal] = useState<boolean>(false);
-  const [currency, setCurrency] = useState<string>('NGN');
+  const [currency, setCurrency] = useState<string>('USD');
   const stakedTimer = useRef<number | null>(null);
+
+  // Set default currency based on user's country
+  useEffect(() => {
+    const defaultCurrency = user?.country?.toLowerCase() === 'nigeria' ? 'NGN' : 'USD';
+    setCurrency(defaultCurrency);
+  }, [user]);
 
   const xenaUsdPrice = balances.currentPrice || 2.85;
   const fxRate = FX_RATES[currency] ?? 1;

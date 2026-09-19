@@ -80,7 +80,7 @@ export default function App() {
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [allInvestments, setAllInvestments] = useState<any[]>([]);
-  const [limits, setLimits] = useState<{ min_deposit_ngn?: number; min_withdrawal_ngn?: number }>({ min_deposit_ngn: 3000, min_withdrawal_ngn: 3000 });
+  const [limits, setLimits] = useState<{ min_deposit_ngn?: number; min_withdrawal_ngn?: number }>({ min_deposit_ngn: 5000, min_withdrawal_ngn: 5000 });
 
   // Active View / Page Routing
   const [activeTab, setActiveTab] = useState<string>('login');
@@ -941,6 +941,7 @@ verifiedAccountsCount: user.verifiedAccountsCount,
             catalog={vaultCatalog}
             onSelectPlan={handleSelectPlan}
             onStakeNewPlan={handleStakeNewPlan}
+            user={user}
           />
         );
 
@@ -1190,6 +1191,7 @@ verifiedAccountsCount: user.verifiedAccountsCount,
         xenaUsdPrice={marketStats.price}
         limits={limits}
         email={user.email}
+        country={user.country}
         savedBankDetails={user.bankDetails || []}
         savedWallets={user.walletAddresses || []}
         onSuccess={handleBalanceChange}

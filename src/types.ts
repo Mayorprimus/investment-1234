@@ -12,6 +12,7 @@ export interface SavedWalletAddress {
 export interface UserProfile {
   name: string;
   email: string;
+  country: string;
   kycTier: string;
   avatarUrl?: string;
   xenaId: string;
