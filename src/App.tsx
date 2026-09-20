@@ -303,7 +303,10 @@ export default function App() {
     if (!getAuthToken()) return;
     const t = setTimeout(() => {
       saveAccount({
-        name: user.name,
+        // NOTE: `name` is intentionally excluded here. This effect fires on
+        // boot while `user` still holds the INITIAL_USER_PROFILE placeholder
+        // ("Alex Morgan"), which would clobber the real registered name in the
+        // DB. Name is persisted only via the explicit handleUpdateProfile.
         email: user.email.toLowerCase(),
         kycTier: user.kycTier,
         twoFactorEnabled: user.twoFactorEnabled,
@@ -738,6 +741,11 @@ verifiedAccountsCount: user.verifiedAccountsCount,
 
   const handleUpdateProfile = (profile: Partial<UserProfile>) => {
     setUser((prev) => ({ ...prev, ...profile }));
+    // Persist explicit profile edits (e.g. display name) — the auto write-through
+    // no longer sends `name`, so this is the only path that saves it.
+    if (getAuthToken()) {
+      saveAccount(profile).catch(() => {});
+    }
   };
 
   const handleChangePassword = async (currentPassword: string, newPassword: string): Promise<{ ok: boolean; error?: string }> => {
@@ -826,7 +834,15 @@ verifiedAccountsCount: user.verifiedAccountsCount,
       bankDetails: acc.bankDetails || [],
       walletAddresses: acc.walletAddresses || [],
     });
-    setBalances({ ...INITIAL_BALANCES, ...acc.balances });
+    setBalances((prev) => ({
+      ...INITIAL_BALANCES,
+      ...acc.balances,
+      // Global price/NGN-rate are authoritative (kept in sync by applyGlobalPrice).
+      // The stored per-profile values are stale and would otherwise re-clobber
+      // these on every realtime event, making displayed XENA amounts flicker.
+      currentPrice: prev.currentPrice || acc.balances.currentPrice || 2.85,
+      xenaNgnRate: prev.xenaNgnRate || acc.balances.xenaNgnRate || 1500,
+    }));
     setTransactions(acc.transactions || []);
     setInvestments(acc.investments || []);
     setNotifications(acc.notifications || []);
@@ -942,6 +958,7 @@ verifiedAccountsCount: user.verifiedAccountsCount,
             onSelectPlan={handleSelectPlan}
             onStakeNewPlan={handleStakeNewPlan}
             user={user}
+            xenaUsdPrice={marketStats.price}
           />
         );
 

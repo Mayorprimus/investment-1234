@@ -186,8 +186,8 @@ const MarketChart: React.FC<MarketChartProps> = ({ points, basePrice, up = true 
 
       {/* change badge */}
       <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-lg bg-white/85 backdrop-blur border border-[#EDE9FE] text-[10px] font-bold shadow-xs">
-        {up ? <TrendingUp className="w-3 h-3 text-[#16A34A]" /> : <TrendingDown className="w-3 h-3 text-[#16A34A]" />}
-        <span className="font-mono text-[#16A34A]">+12.65%</span>
+        {up ? <TrendingUp className="w-3 h-3 text-[#16A34A]" /> : <TrendingDown className="w-3 h-3 text-[#DC2626]" />}
+        <span className={`font-mono ${up ? 'text-[#16A34A]' : 'text-[#DC2626]'}`}>{up ? '+' : ''}{changePct.toFixed(2)}%</span>
       </div>
     </div>
   );
@@ -215,7 +215,7 @@ export const MarketPage: React.FC<MarketPageProps> = ({
   const [newsSearch, setNewsSearch] = useState<string>('');
   const [activeArticle, setActiveArticle] = useState<MarketNewsItem | null>(null);
 
-  const chartDataMap: Record<string, number[]> = {
+  const chartShapes: Record<string, number[]> = {
     '1H': [4.7812, 4.7920, 4.8101, 4.8033, 4.8215, 4.8398, 4.8310, 4.8502],
     '24H': [4.2210, 4.3563, 4.3018, 4.5241, 4.4822, 4.6819, 4.7520, 4.6233, 4.8012, 4.8505],
     '7D': [3.9021, 4.1010, 4.0552, 4.3210, 4.4011, 4.6520, 4.8505],
@@ -224,8 +224,13 @@ export const MarketPage: React.FC<MarketPageProps> = ({
     'ALL': [0.5002, 0.9011, 1.8022, 2.6010, 3.5005, 4.2012, 4.8505],
   };
 
-  const points = chartDataMap[timeframe];
+  // Scale the historical shape so its latest point equals the live XENA price,
+  // keeping the chart in sync whenever the admin changes the global price.
+  const shape = chartShapes[timeframe];
+  const anchor = shape[shape.length - 1] || 1;
+  const points = shape.map((v) => (v / anchor) * marketStats.price);
   const up = points[points.length - 1] >= points[0];
+  const changePct = points[0] ? ((points[points.length - 1] - points[0]) / points[0]) * 100 : 0;
 
   const numAmount = parseFloat(tradeAmount) || 0;
   const estimatedCost = orderType === 'buy' ? numAmount * marketStats.price : numAmount;

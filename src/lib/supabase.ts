@@ -88,14 +88,20 @@ export async function getSessionToken(): Promise<string | null> {
 // ---------- DB row → client shape mappers (snake_case → camelCase) ----------
 
 export function mapBalances(b: any): UserBalances {
+  // Derive totals from the authoritative parts. Stored `totalXena`/`totalBalance`
+  // go stale after an admin credit (which bumps availableXena/totalBalance but
+  // not totalXena), so "Total Assets" would otherwise lag behind the real balance.
+  const availableXena = Number(b?.availableXena || 0);
+  const investedXena = Number(b?.investedXena || 0);
+  const derivedTotal = availableXena + investedXena;
   return {
-    totalXena: Number(b?.totalXena || 0),
-    totalBalance: Number(b?.totalBalance ?? b?.totalXena ?? 0),
+    totalXena: derivedTotal,
+    totalBalance: derivedTotal,
     usdRate: Number(b?.usdRate || 1),
     change24hAmount: Number(b?.change24hAmount || 0),
     change24hPercent: Number(b?.change24hPercent || 0),
-    availableXena: Number(b?.availableXena || 0),
-    investedXena: Number(b?.investedXena || 0),
+    availableXena,
+    investedXena,
     averageBuyPrice: Number(b?.averageBuyPrice || 0),
     currentPrice: Number(b?.currentPrice || DEFAULT_PRICE),
     stakedXena: Number(b?.stakedXena || 0),

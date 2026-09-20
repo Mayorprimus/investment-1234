@@ -101,12 +101,12 @@ from auth.users where email = 'alex.morgan@xena.fi';
 --
 
 insert into public.vault_catalog (id, name, category, apy, duration, days, min_deposit, badge, risk, description, active, sort_order) values
-  ('cat-flex',    'Micro Starter',  'Flexible',      12.0, 'Flexible',    0,  1.05,  'Instant Redeem', 'Low Risk',   'A tiny low-pressure entry point. Withdraw any time, yield compounds daily.', true, 1),
-  ('cat-2wk-sprint','2-Week Sprint','2-Week (14D)',  20.0, '2-Week Lock', 14, 3.51,  '⚡ 2-Week',      'Audited',    'A fast 14-day lock with a friendly APY boost on your starter amount.', true, 2),
-  ('cat-2wk-surge','2-Week Surge',  '2-Week (14D)',  24.0, '2-Week Lock', 14, 5.26,  'High Yield',     'Protected',  'Proof-of-stake delegation with 14-day compounding and payout at maturity.', true, 3),
-  ('cat-30d',     '30-Day Growth',  'Fixed Term',    28.0, '30-Day Lock', 30, 8.07,  'Popular',        'Audited Strategy', 'A balanced one-month vault routing liquidity for steady amplified yield.', true, 4),
-  ('cat-45d',     '45-Day Momentum','Fixed Term',    34.0, '45-Day Lock', 45, 12.28, 'Trending',       'Hedged',     'A mid-term play blending validator yield with defensive hedging.', true, 5),
-  ('cat-90d',     'VIP Boost',      'VIP Tier',      42.0, '90-Day Lock', 90, 14.04, 'High APY',       'Protected',  'The top tier — institutional revenue share with maximum compounding power.', true, 6)
+  ('cat-flex',    'Micro Starter',  'Flexible',      12.0, '30-Day Lock', 30, 1.05,  'Instant Redeem', 'Low Risk',   'A tiny low-pressure entry point. Yield compounds daily; funds unlock after the 30-day lock.', true, 1),
+  ('cat-2wk-sprint','2-Week Sprint','2-Week (14D)',  20.0, '30-Day Lock', 30, 3.51,  '⚡ 2-Week',      'Audited',    'A friendly APY boost on your starter amount. Funds unlock after the 30-day lock.', true, 2),
+  ('cat-2wk-surge','2-Week Surge',  '2-Week (14D)',  24.0, '30-Day Lock', 30, 5.26,  'High Yield',     'Protected',  'Proof-of-stake delegation with compounding and payout at maturity (30-day lock).', true, 3),
+  ('cat-30d',     '30-Day Growth',  'Fixed Term',    28.0, '30-Day Lock', 30, 8.07,  'Popular',        'Audited Strategy', 'A balanced vault routing liquidity for steady amplified yield. 30-day lock.', true, 4),
+  ('cat-45d',     '45-Day Momentum','Fixed Term',    34.0, '30-Day Lock', 30, 12.28, 'Trending',       'Hedged',     'A mid-term play blending validator yield with defensive hedging. 30-day lock.', true, 5),
+  ('cat-90d',     'VIP Boost',      'VIP Tier',      42.0, '30-Day Lock', 30, 14.04, 'High APY',       'Protected',  'The top tier — institutional revenue share with maximum compounding power. 30-day lock.', true, 6)
 on conflict (id) do update set
   name = excluded.name, category = excluded.category, apy = excluded.apy,
   duration = excluded.duration, days = excluded.days, min_deposit = excluded.min_deposit,

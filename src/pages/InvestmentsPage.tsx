@@ -9,6 +9,10 @@ interface InvestmentsPageProps {
   onSelectPlan: (plan: InvestmentPlan) => void;
   onStakeNewPlan: (plan: InvestmentPlan) => boolean;
   user?: UserProfile;
+  // Global XENA/USD price — authoritative source; per-profile balances.currentPrice
+  // is stale and gets re-clobbered on every realtime sync (causing the displayed
+  // XENA amounts to flicker between two values).
+  xenaUsdPrice: number;
 }
 
 const CATEGORY_META: Record<string, { label: string; accent: string; grad: string; glow: string }> = {
@@ -35,20 +39,20 @@ const catalogPlans = [
     name: 'Micro Starter',
     category: 'Flexible',
     apy: 12.0,
-    duration: 'Flexible',
-    days: 0,
+    duration: '30-Day Lock',
+    days: 30,
     priceUsd: 3,
     badge: 'Instant Redeem',
     risk: 'Low Risk',
-    description: 'A tiny low-pressure entry point. Withdraw any time, yield compounds daily.',
+    description: 'A tiny low-pressure entry point. Yield compounds daily; funds unlock after the 30-day lock.',
   },
   {
     id: 'cat-2wk-sprint',
     name: '2-Week Sprint',
     category: '2-Week (14D)',
     apy: 20.0,
-    duration: '2-Week Lock',
-    days: 14,
+    duration: '30-Day Lock',
+    days: 30,
     priceUsd: 10,
     badge: '⚡ 2-Week',
     risk: 'Audited',
@@ -59,8 +63,8 @@ const catalogPlans = [
     name: '2-Week Surge',
     category: '2-Week (14D)',
     apy: 24.0,
-    duration: '2-Week Lock',
-    days: 14,
+    duration: '30-Day Lock',
+    days: 30,
     priceUsd: 15,
     badge: 'High Yield',
     risk: 'Protected',
@@ -83,8 +87,8 @@ const catalogPlans = [
     name: '45-Day Momentum',
     category: 'Fixed Term',
     apy: 34.0,
-    duration: '45-Day Lock',
-    days: 45,
+    duration: '30-Day Lock',
+    days: 30,
     priceUsd: 35,
     badge: 'Trending',
     risk: 'Hedged',
@@ -95,8 +99,8 @@ const catalogPlans = [
     name: 'VIP Boost',
     category: 'VIP Tier',
     apy: 42.0,
-    duration: '90-Day Lock',
-    days: 90,
+    duration: '30-Day Lock',
+    days: 30,
     priceUsd: 40,
     badge: 'High APY',
     risk: 'Protected',
@@ -111,6 +115,7 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
   onSelectPlan,
   onStakeNewPlan,
   user,
+  xenaUsdPrice: priceProp,
 }) => {
   const [calcAmount, setCalcAmount] = useState<number>(1000);
   const [calcDuration, setCalcDuration] = useState<number>(14);
@@ -128,7 +133,9 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
     setCurrency(defaultCurrency);
   }, [user]);
 
-  const xenaUsdPrice = balances.currentPrice || 2.85;
+  // Global price is authoritative; guard against a bad/zero value so division
+  // never explodes if settings are briefly missing.
+  const xenaUsdPrice = Math.max(0.0001, Number(priceProp) || 2.85);
   const fxRate = FX_RATES[currency] ?? 1;
   const fxSymbol = FX_SYMBOLS[currency] ?? '$';
   const formatFiat = (usd: number, dp = 2) => `${fxSymbol}${(usd * fxRate).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}`;
