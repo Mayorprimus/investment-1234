@@ -121,7 +121,7 @@ insert into public.xena_settings (key, value) values
   ('price',  '{"price": 0.0002}'),
   ('xena_ngn_rate', '{"ngnRate": 0.266}'),
   ('flags',  '{"maintenanceMode": false, "p2pZeroFee": true, "withdrawApproval": true}'),
-  ('limits', '{"min_deposit_ngn": 3000, "min_withdrawal_ngn": 3000}'),
+  ('limits', '{"min_deposit_ngn": 4000, "min_withdrawal_ngn": 4000}'),
   ('escrow', '{"bank": "Providus Bank", "accountName": "XENA Nigeria Escrow Ltd", "accountNumber": "30-8821-4490", "sortCode": "101", "fee": 500}'),
   ('promos', jsonb_build_array(
     jsonb_build_object('code', 'WELCOME50', 'rewardXena', 50, 'label', 'New Trader Welcome Gift', 'description', 'New Trader Welcome Gift', 'active', true),

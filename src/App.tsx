@@ -238,10 +238,7 @@ export default function App() {
         if (user) {
           const me = await getMyState();
           if (me?.profile) {
-            setBalances(me.profile.balances || INITIAL_BALANCES);
-            setInvestments(me.investments || []);
-            setTransactions(me.profile.transactions || []);
-            setNotifications(me.profile.notifications || []);
+            applyAccount(mapProfileToAccount(me.profile, me.investments || []));
           }
         }
       } catch {
@@ -850,15 +847,14 @@ verifiedAccountsCount: user.verifiedAccountsCount,
       bankDetails: acc.bankDetails || [],
       walletAddresses: acc.walletAddresses || [],
     });
-    setBalances((prev) => ({
+setBalances((prev) => ({
       ...INITIAL_BALANCES,
       ...acc.balances,
-      // Global price/NGN-rate are authoritative (kept in sync by applyGlobalPrice).
-      // The stored per-profile values are stale and would otherwise re-clobber
-      // these on every realtime event, making displayed XENA amounts flicker.
-      // `usdRate` mirrors the price so wallet/profile fiat totals match the home page.
-      currentPrice: prev.currentPrice || acc.balances.currentPrice || 0.0002,
-      usdRate: prev.usdRate || acc.balances.usdRate || 0.0002,
+      // Global price/NGN-rate are authoritative — always use the synced global
+      // price so wallet/profile fiat totals match the home page.
+      // Do NOT inherit stale per-profile prices from the DB.
+      currentPrice: marketStats.price,
+      usdRate: marketStats.price,
       xenaNgnRate: prev.xenaNgnRate || acc.balances.xenaNgnRate || 0.266,
     }));
     setTransactions(acc.transactions || []);

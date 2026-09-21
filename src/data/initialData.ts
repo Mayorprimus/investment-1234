@@ -288,48 +288,48 @@ export const INITIAL_NOTIFICATIONS: NotificationItem[] = [
 // Sample chart data for Portfolio & Token
 export const PORTFOLIO_HISTORY = {
   '1D': [
-    { time: '00:00', value: 2530 },
-    { time: '04:00', value: 2570 },
-    { time: '08:00', value: 2620 },
-    { time: '12:00', value: 2710 },
-    { time: '16:00', value: 2790 },
-    { time: '20:00', value: 2835 },
-    { time: 'Now', value: 2850.50 },
+    { time: '00:00', value: 0.506 },
+    { time: '04:00', value: 0.514 },
+    { time: '08:00', value: 0.524 },
+    { time: '12:00', value: 0.542 },
+    { time: '16:00', value: 0.558 },
+    { time: '20:00', value: 0.567 },
+    { time: 'Now', value: 0.5701 },
   ],
   '1W': [
-    { time: 'Mon', value: 2420 },
-    { time: 'Tue', value: 2490 },
-    { time: 'Wed', value: 2540 },
-    { time: 'Thu', value: 2610 },
-    { time: 'Fri', value: 2730 },
-    { time: 'Sat', value: 2810 },
-    { time: 'Sun', value: 2850.50 },
+    { time: 'Mon', value: 0.484 },
+    { time: 'Tue', value: 0.498 },
+    { time: 'Wed', value: 0.508 },
+    { time: 'Thu', value: 0.522 },
+    { time: 'Fri', value: 0.546 },
+    { time: 'Sat', value: 0.562 },
+    { time: 'Sun', value: 0.5701 },
   ],
   '1M': [
-    { time: 'Week 1', value: 2100 },
-    { time: 'Week 2', value: 2280 },
-    { time: 'Week 3', value: 2530 },
-    { time: 'Week 4', value: 2850.50 },
+    { time: 'Week 1', value: 0.42 },
+    { time: 'Week 2', value: 0.456 },
+    { time: 'Week 3', value: 0.506 },
+    { time: 'Week 4', value: 0.5701 },
   ],
   '1Y': [
-    { time: 'Q1', value: 1200 },
-    { time: 'Q2', value: 1680 },
-    { time: 'Q3', value: 2240 },
-    { time: 'Q4', value: 2850.50 },
+    { time: 'Q1', value: 0.24 },
+    { time: 'Q2', value: 0.336 },
+    { time: 'Q3', value: 0.448 },
+    { time: 'Q4', value: 0.5701 },
   ],
   'ALL': [
-    { time: '2024', value: 450 },
-    { time: '2025', value: 1400 },
-    { time: '2026', value: 2850.50 },
+    { time: '2024', value: 0.09 },
+    { time: '2025', value: 0.28 },
+    { time: '2026', value: 0.5701 },
   ]
 };
 
 export const MARKET_CHART_POINTS = {
-  '15m': [2.81, 2.82, 2.80, 2.83, 2.84, 2.83, 2.85],
-  '1H': [2.76, 2.78, 2.81, 2.79, 2.82, 2.84, 2.85],
-  '4H': [2.68, 2.72, 2.70, 2.75, 2.81, 2.83, 2.85],
-  '1D': [2.52, 2.58, 2.64, 2.71, 2.79, 2.83, 2.85],
-  '1W': [2.45, 2.50, 2.58, 2.65, 2.72, 2.80, 2.85],
+  '15m': [0.000198, 0.000199, 0.000198, 0.000201, 0.000202, 0.000201, 0.000202],
+  '1H': [0.000194, 0.000196, 0.000198, 0.000197, 0.000199, 0.000201, 0.000202],
+  '4H': [0.000189, 0.000192, 0.000190, 0.000194, 0.000198, 0.000200, 0.000202],
+  '1D': [0.000178, 0.000182, 0.000186, 0.000191, 0.000197, 0.000200, 0.000202],
+  '1W': [0.000173, 0.000177, 0.000182, 0.000187, 0.000192, 0.000198, 0.000202],
 };
 
 export const INITIAL_MARKET_NEWS: MarketNewsItem[] = [

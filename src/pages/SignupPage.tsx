@@ -205,7 +205,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateTab, onSignupS
                   <label className="text-[11px] font-bold text-[#171717] block mb-1">Full Name</label>
                   <div className="relative">
                     <User className="w-4 h-4 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Alex Morgan" className={`${inputCls} pl-9`} />
+                    <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" className={`${inputCls} pl-9`} />
                   </div>
                 </div>
 

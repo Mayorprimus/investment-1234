@@ -133,4 +133,9 @@ begin
 end $$;
 
 -- 6) RE-SYNC PUBLIC STATE ---------------------------------------
+-- Update limits: crypto min deposit $3 ≈ 15000 XENA, NGN equivalent ~₦4,000
+insert into public.xena_settings(key, value) values
+  ('limits', '{"min_deposit_ngn": 4000, "min_withdrawal_ngn": 4000}')
+on conflict (key) do update set value = excluded.value;
+
 select public.get_public_state();

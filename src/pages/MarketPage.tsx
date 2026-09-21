@@ -216,12 +216,12 @@ export const MarketPage: React.FC<MarketPageProps> = ({
   const [activeArticle, setActiveArticle] = useState<MarketNewsItem | null>(null);
 
   const chartShapes: Record<string, number[]> = {
-    '1H': [4.7812, 4.7920, 4.8101, 4.8033, 4.8215, 4.8398, 4.8310, 4.8502],
-    '24H': [4.2210, 4.3563, 4.3018, 4.5241, 4.4822, 4.6819, 4.7520, 4.6233, 4.8012, 4.8505],
-    '7D': [3.9021, 4.1010, 4.0552, 4.3210, 4.4011, 4.6520, 4.8505],
-    '1M': [3.2001, 3.4512, 3.8022, 3.6533, 4.1021, 4.4550, 4.8505],
-    '1Y': [1.1002, 1.6013, 2.2018, 2.8012, 3.4008, 4.1011, 4.8505],
-    'ALL': [0.5002, 0.9011, 1.8022, 2.6010, 3.5005, 4.2012, 4.8505],
+    '1H': [0.000194, 0.000196, 0.000198, 0.000197, 0.000199, 0.000201, 0.000202],
+    '24H': [0.000178, 0.000182, 0.000186, 0.000191, 0.000197, 0.000200, 0.000202],
+    '7D': [0.000173, 0.000177, 0.000182, 0.000187, 0.000192, 0.000198, 0.000202],
+    '1M': [0.000156, 0.000168, 0.000185, 0.000178, 0.000199, 0.000216, 0.000202],
+    '1Y': [0.000054, 0.000078, 0.000108, 0.000137, 0.000167, 0.000185, 0.000202],
+    'ALL': [0.000024, 0.000044, 0.000088, 0.000127, 0.000171, 0.000205, 0.000202],
   };
 
   // Scale the historical shape so its latest point equals the live XENA price,
@@ -345,15 +345,19 @@ export const MarketPage: React.FC<MarketPageProps> = ({
                   <span>Bid Price (USD)</span><span>Amount (XENA)</span>
                 </div>
                 <div className="space-y-1 mt-1 font-mono text-[11px]">
-                  {[
-                    { price: '4.848', amount: '12,450', depth: 85 },
-                    { price: '4.845', amount: '8,200', depth: 60 },
-                    { price: '4.840', amount: '24,100', depth: 95 },
-                    { price: '4.835', amount: '5,600', depth: 40 },
-                  ].map((bid, i) => (
+                  {(() => {
+                    const base = marketStats.price;
+                    const spread = base * 0.0004; // 0.04% spread
+                    return [
+                      { price: base - spread * 4, amount: '12,450', depth: 85 },
+                      { price: base - spread * 3, amount: '8,200', depth: 60 },
+                      { price: base - spread * 2, amount: '24,100', depth: 95 },
+                      { price: base - spread, amount: '5,600', depth: 40 },
+                    ];
+                  })().map((bid, i) => (
                     <div key={i} className="flex justify-between relative py-1 px-1">
                       <div className="absolute inset-y-0 left-0 bg-emerald-50/70 rounded-xs" style={{ width: `${bid.depth}%` }} />
-                      <span className="text-[#16A34A] font-bold relative z-10">{bid.price}</span>
+                      <span className="text-[#16A34A] font-bold relative z-10">${bid.price.toFixed(4)}</span>
                       <span className="text-[#171717] relative z-10">{bid.amount}</span>
                     </div>
                   ))}
@@ -364,15 +368,19 @@ export const MarketPage: React.FC<MarketPageProps> = ({
                   <span>Ask Price (USD)</span><span>Amount (XENA)</span>
                 </div>
                 <div className="space-y-1 mt-1 font-mono text-[11px]">
-                  {[
-                    { price: '4.852', amount: '14,300', depth: 75 },
-                    { price: '4.855', amount: '9,800', depth: 50 },
-                    { price: '4.860', amount: '31,200', depth: 100 },
-                    { price: '4.865', amount: '6,400', depth: 35 },
-                  ].map((ask, i) => (
+                  {(() => {
+                    const base = marketStats.price;
+                    const spread = base * 0.0004;
+                    return [
+                      { price: base + spread, amount: '14,300', depth: 75 },
+                      { price: base + spread * 2, amount: '9,800', depth: 50 },
+                      { price: base + spread * 3, amount: '31,200', depth: 100 },
+                      { price: base + spread * 4, amount: '6,400', depth: 35 },
+                    ];
+                  })().map((ask, i) => (
                     <div key={i} className="flex justify-between relative py-1 px-1">
                       <div className="absolute inset-y-0 left-0 bg-red-50/70 rounded-xs" style={{ width: `${ask.depth}%` }} />
-                      <span className="text-[#DC2626] font-bold relative z-10">{ask.price}</span>
+                      <span className="text-[#DC2626] font-bold relative z-10">${ask.price.toFixed(4)}</span>
                       <span className="text-[#171717] relative z-10">{ask.amount}</span>
                     </div>
                   ))}

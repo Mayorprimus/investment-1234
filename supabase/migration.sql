@@ -430,7 +430,7 @@ begin
   end if;
   if v_rate is null then v_rate := 0.266; end if;
   select value into v_limits from public.xena_settings where key = 'limits';
-  if v_limits is null then v_limits := '{"min_deposit_ngn":3000,"min_withdrawal_ngn":3000}'::jsonb; end if;
+  if v_limits is null then v_limits := '{"min_deposit_ngn":4000,"min_withdrawal_ngn":4000}'::jsonb; end if;
   select value into v_flags from public.xena_settings where key = 'flags';
   if v_flags is null then v_flags := '{"maintenanceMode":false,"p2pZeroFee":true,"withdrawApproval":true}'::jsonb; end if;
   select value into v_escrow from public.xena_settings where key = 'escrow';
@@ -1069,8 +1069,8 @@ begin
   if p is null then return jsonb_build_object('ok', false, 'error', 'Account not found.'); end if;
 
   select value into v_limits from public.xena_settings where key = 'limits';
-  if v_limits is null then v_limits := '{"min_deposit_ngn":3000,"min_withdrawal_ngn":3000}'::jsonb; end if;
-  v_min_ngn := coalesce((v_limits->>'min_withdrawal_ngn')::numeric, 3000);
+  if v_limits is null then v_limits := '{"min_deposit_ngn":4000,"min_withdrawal_ngn":4000}'::jsonb; end if;
+  v_min_ngn := coalesce((v_limits->>'min_withdrawal_ngn')::numeric, 4000);
   v_ngn_rate := coalesce(
     (select (value->>'ngnRate')::numeric from public.xena_settings where key = 'xena_ngn_rate'),
     coalesce((p.balances->>'xenaNgnRate')::numeric, 0.266)
