@@ -40,7 +40,8 @@ const MarketChart: React.FC<MarketChartProps> = ({ points, basePrice, up = true 
 
   const minP = Math.min(...points);
   const maxP = Math.max(...points);
-  const padding = (maxP - minP) * 0.12 || 0.01;
+  const priceRange = maxP - minP;
+  const padding = priceRange * 0.12 || maxP * 0.01 || 0.00001;
   const lo = minP - padding;
   const hi = maxP + padding;
 
@@ -114,7 +115,7 @@ const MarketChart: React.FC<MarketChartProps> = ({ points, basePrice, up = true 
             <g key={`hg-${i}`}>
               <line x1={PAD_X} y1={y} x2={W - 0} y2={y} stroke="#EDE9FE" strokeWidth="1" />
               <text x={PAD_X - 8} y={y + 3} textAnchor="end" fontSize="10" fill="#9CA3AF" fontFamily="monospace">
-                ${tick.toFixed(4)}
+                ${tick.toFixed(6)}
               </text>
             </g>
           );
@@ -167,7 +168,7 @@ const MarketChart: React.FC<MarketChartProps> = ({ points, basePrice, up = true 
             <circle cx={xy[xy.length - 1].x} cy={xy[xy.length - 1].y} r="4.5" fill={lineColor} stroke="#fff" strokeWidth="2" />
             <rect x={xy[xy.length - 1].x - 52} y={Math.max(4, xy[xy.length - 1].y - 24)} width="44" height="16" rx="4" fill={up ? '#16A34A' : '#DC2626'} />
             <text x={xy[xy.length - 1].x - 30} y={Math.max(4, xy[xy.length - 1].y - 24) + 11} textAnchor="middle" fontSize="9" fill="#fff" fontFamily="monospace" fontWeight="bold">
-              ${points[points.length - 1].toFixed(4)}
+              ${points[points.length - 1].toFixed(6)}
             </text>
           </g>
         )}
@@ -179,7 +180,7 @@ const MarketChart: React.FC<MarketChartProps> = ({ points, basePrice, up = true 
           className="absolute pointer-events-none bg-white border border-[#EDE9FE] rounded-lg shadow-lg px-2.5 py-1.5 text-center"
           style={{ left: `calc(${((hovered.x) / W) * 100}% )`, top: `calc(${((hovered.y) / H) * 100}% )`, transform: 'translate(-50%, -120%)' }}
         >
-          <p className="text-[10px] font-bold text-[#171717] font-mono">${hoveredPrice.toFixed(4)}</p>
+          <p className="text-[10px] font-bold text-[#171717] font-mono">${hoveredPrice.toFixed(6)}</p>
           <p className="text-[9px] text-[#6B7280] font-mono">{miniLabels[hoverIdx ?? 0] || ''}</p>
         </div>
       )}

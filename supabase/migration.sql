@@ -1813,6 +1813,15 @@ begin
   return jsonb_build_object('ok', true, 'submissions', coalesce(v_subs, '[]'::jsonb));
 end $$;
 
+-- Admin deletes a task from catalog
+create or replace function public.admin_delete_task(p_task_id text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then return jsonb_build_object('ok', false, 'error', 'Admin access required'); end if;
+  delete from public.social_tasks where id = p_task_id;
+  return jsonb_build_object('ok', true, 'deleted', p_task_id);
+end $$;
+
 --
 -- GRANTS
 --
@@ -1880,6 +1889,7 @@ grant execute on function public.credit_payment to service_role;
 grant execute on function public.submit_task to authenticated;
 grant execute on function public.admin_review_task to authenticated;
 grant execute on function public.admin_get_task_submissions to authenticated;
+grant execute on function public.admin_delete_task to authenticated;
 grant execute on function public.get_social_tasks to anon, authenticated;
 grant execute on function public.get_my_task_submissions to authenticated;
 

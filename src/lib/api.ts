@@ -702,3 +702,12 @@ export async function adminReviewTask(submissionId: string, approve: boolean, no
     return { ok: false, error: describeAuthError(e) };
   }
 }
+
+export async function adminDeleteTask(taskId: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await callRpc<any>('admin_delete_task', { p_task_id: taskId });
+    return { ok: res?.ok ?? false, error: res?.error };
+  } catch (e: any) {
+    return { ok: false, error: describeAuthError(e) };
+  }
+}
