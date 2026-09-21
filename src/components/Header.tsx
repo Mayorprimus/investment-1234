@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Bell, User, Menu, X, ChevronDown, Shield, ArrowUpRight, Settings } from 'lucide-react';
+import { Search, Bell, User, Menu, X, ChevronDown, Shield, ArrowUpRight, Settings, Trophy } from 'lucide-react';
 import { XenaLogo } from './XenaLogo';
 import { UserProfile, NotificationItem } from '../types';
 
@@ -37,6 +37,7 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'investments', label: 'Earn' },
     { id: 'p2p', label: 'P2P' },
     { id: 'wallet', label: 'Wallet' },
+    { id: 'tasks', label: 'Tasks', icon: Trophy },
     { id: 'profile', label: 'Profile' },
     { id: 'transactions', label: 'Activity' },
     { id: 'announcements', label: 'News' },
@@ -67,12 +68,13 @@ export const Header: React.FC<HeaderProps> = ({
                   <button
                     key={item.id}
                     onClick={() => onSelectTab(item.id)}
-                    className={`relative py-4 transition-colors cursor-pointer ${
+                    className={`relative py-4 transition-colors cursor-pointer flex items-center gap-1.5 ${
                       isActive
                         ? 'text-[#6D28D9] font-bold border-b-2 border-[#6D28D9]'
                         : 'text-[#6B7280] hover:text-[#6D28D9]'
                     }`}
                   >
+                    {item.icon && <item.icon className="w-3.5 h-3.5" />}
                     {item.label}
                   </button>
                 );
@@ -236,12 +238,13 @@ export const Header: React.FC<HeaderProps> = ({
                 onSelectTab(item.id);
                 setMobileMenuOpen(false);
               }}
-              className={`w-full text-left px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+              className={`w-full text-left px-4 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center gap-2 ${
                 activeTab === item.id
                   ? 'bg-purple-50 text-[#6D28D9] font-bold'
                   : 'text-[#6B7280] hover:bg-[#F8F7FC] hover:text-[#171717]'
               }`}
             >
+              {item.icon && <item.icon className="w-4 h-4 shrink-0" />}
               {item.label}
             </button>
           ))}

@@ -43,8 +43,18 @@ import {
   Send,
   Inbox,
   RotateCcw,
+  Trophy,
+  Clock,
+  UserCheck,
+  Twitter,
+  MessageCircle,
+  Youtube,
+  Instagram,
+  Discord,
+  Music,
+  Linkedin,
 } from 'lucide-react';
-import { getSupportConversations, replySupportConversation, resolveSupportConversation, replaceAnnouncements, replacePromos, updateAdminSettings, adminGetDeposits, adminDecideDeposit } from '../lib/api';
+import { getSupportConversations, replySupportConversation, resolveSupportConversation, replaceAnnouncements, replacePromos, updateAdminSettings, adminGetDeposits, adminDecideDeposit, adminGetTaskSubmissions, adminReviewTask } from '../lib/api';
 import type { SupportConversation } from '../types';
 
 interface Props {
@@ -506,6 +516,7 @@ export const AdminPanel: React.FC<Props> = ({
     { id: 'withdrawals', label: 'Withdrawals', icon: ArrowUpRight },
     { id: 'deposits', label: 'Deposits', icon: Banknote },
     { id: 'referrals', label: 'Referrals', icon: UserPlus },
+    { id: 'tasks', label: 'Tasks & Rewards', icon: Trophy },
     { id: 'p2p', label: 'P2P Marketplace', icon: Handshake },
     { id: 'investments', label: 'Investments & Staking', icon: PiggyBank },
     { id: 'announcements', label: 'Announcements', icon: Newspaper },
@@ -1127,6 +1138,14 @@ export const AdminPanel: React.FC<Props> = ({
                 </div>
               )}
             </div>
+          )}
+
+          {/* ============ TASKS & REWARDS ============ */}
+          {section === 'tasks' && (
+            <TasksSection
+              adminGetTaskSubmissions={adminGetTaskSubmissions}
+              adminReviewTask={adminReviewTask}
+            />
           )}
 
           {/* ============ P2P ============ */}
@@ -1760,6 +1779,189 @@ export const AdminPanel: React.FC<Props> = ({
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+};
+
+const TasksSection: React.FC<{
+  adminGetTaskSubmissions: () => Promise<{ ok: boolean; error?: string; submissions?: any[] }>;
+  adminReviewTask: (id: string, approve: boolean, note?: string) => Promise<{ ok: boolean; error?: string; rewarded?: number }>;
+}> = ({ adminGetTaskSubmissions, adminReviewTask }) => {
+  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+
+  useEffect(() => {
+    loadSubmissions();
+  }, []);
+
+  const loadSubmissions = async () => {
+    setLoading(true);
+    try {
+      const res = await adminGetTaskSubmissions();
+      if (res.ok && res.submissions) setSubmissions(res.submissions);
+    } catch (e) {
+      console.error('Failed to load task submissions:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReview = async (id: string, approve: boolean) => {
+    const note = approve ? 'Approved by admin' : 'Rejected by admin';
+    const res = await adminReviewTask(id, approve, note);
+    if (res.ok) {
+      setSubmissions(prev => prev.map(s => s.id === id ? { ...s, status: approve ? 'approved' : 'rejected', admin_note: note, reviewed_at: new Date().toISOString() } : s));
+    } else {
+      alert(res.error || 'Failed to review submission');
+    }
+  };
+
+  const filtered = submissions.filter(s => filter === 'all' || s.status === filter);
+
+  const platformColors: Record<string, string> = {
+    twitter: 'bg-sky-500',
+    telegram: 'bg-blue-500',
+    youtube: 'bg-red-500',
+    instagram: 'bg-pink-500',
+    discord: 'bg-indigo-500',
+    tiktok: 'bg-black',
+    custom: 'bg-blue-700',
+  };
+
+  const platformLabels: Record<string, string> = {
+    twitter: 'Twitter (X)',
+    telegram: 'Telegram',
+    youtube: 'YouTube',
+    instagram: 'Instagram',
+    discord: 'Discord',
+    tiktok: 'TikTok',
+    custom: 'LinkedIn',
+  };
+
+  const PlatformIcon = (platform: string) => {
+    switch (platform) {
+      case 'twitter': return <Twitter className="w-4 h-4 text-white" />;
+      case 'telegram': return <MessageCircle className="w-4 h-4 text-white" />;
+      case 'youtube': return <Youtube className="w-4 h-4 text-white" />;
+      case 'instagram': return <Instagram className="w-4 h-4 text-white" />;
+      case 'discord': return <Discord className="w-4 h-4 text-white" />;
+      case 'tiktok': return <Music className="w-4 h-4 text-white" />;
+      case 'custom': return <Linkedin className="w-4 h-4 text-white" />;
+      default: return <Trophy className="w-4 h-4 text-white" />;
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-gradient-to-br from-[#1E1B4B] via-[#7C3AED] to-[#DB2777] rounded-2xl p-4 text-white relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-extrabold flex items-center gap-2"><Trophy className="w-4 h-4" /> Tasks & Rewards</h3>
+            <p className="text-[10px] text-purple-100 mt-0.5">Review social task submissions. Each approved task rewards <b className="text-amber-300">30 XENA</b>.</p>
+          </div>
+          <div className="flex gap-2">
+            {['all', 'pending', 'approved', 'rejected'].map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f as any)}
+                className={`px-2.5 py-1.5 text-[10px] font-bold rounded-lg transition-all ${
+                  filter === f ? 'bg-white text-[#6D28D9] shadow-xs' : 'text-purple-100 hover:bg-white/10'
+                }`}
+              >
+                {f.charAt(0).toUpperCase() + f.slice(1)} {filtered.filter(s => s.status === f).length && filter !== 'all' && <span className="ml-1 bg-white/20 px-1.5 py-0.5 rounded-full">{filtered.filter(s => s.status === f).length}</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="bg-white border border-[#EDE9FE] rounded-2xl p-8 text-center">
+          <div className="w-8 h-8 border-2 border-[#7C3AED] border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-[#6B7280] mt-3 text-sm">Loading submissions...</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-white border border-[#EDE9FE] rounded-2xl p-8 text-center">
+          <Trophy className="w-12 h-12 text-[#EDE9FE] mx-auto" />
+          <p className="text-[#6B7280] mt-3">{filter === 'all' ? 'No task submissions yet' : `No ${filter} submissions`}</p>
+        </div>
+      ) : (
+        <div className="bg-white border border-[#EDE9FE] rounded-2xl shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs min-w-[720px]">
+              <thead>
+                <tr className="text-[10px] text-[#9CA3AF] uppercase tracking-wide font-bold border-b border-[#EDE9FE] bg-[#F8F7FC]">
+                  <th className="py-2.5 px-3">User</th>
+                  <th className="py-2.5 px-3">Task</th>
+                  <th className="py-2.5 px-3">Platform</th>
+                  <th className="py-2.5 px-3">Submitted Handle</th>
+                  <th className="py-2.5 px-3">Date</th>
+                  <th className="py-2.5 px-3 text-center">Status</th>
+                  <th className="py-2.5 px-3 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#EDE9FE]">
+                {filtered.map((s) => (
+                  <tr key={s.id} className="hover:bg-[#F8F7FC]">
+                    <td className="py-2.5 px-3">
+                      <div className="min-w-0">
+                        <span className="font-bold text-[#171717] block truncate">{s.user_name || 'Unknown'}</span>
+                        <span className="text-[10px] text-[#6B7280] block truncate">{s.user_email || ''}</span>
+                        <span className="text-[9px] font-bold text-[#6D28D9] bg-purple-50 px-1.5 py-0.5 rounded-md border border-purple-100 inline-block mt-1">ID: {s.user_id?.slice(0, 8)}</span>
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-3 font-medium text-[#171717] truncate max-w-[160px]">{s.task_title || 'Task'}</td>
+                    <td className="py-2.5 px-3">
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${platformColors[s.task_platform] || 'bg-purple-500'} text-white`}>
+                        <PlatformIcon platform={s.task_platform || ''} />
+                        {platformLabels[s.task_platform] || s.task_platform}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 font-mono text-[10px] text-[#6D28D9] bg-purple-50 px-2 py-0.5 rounded-md border border-purple-100">{s.social_handle}</td>
+                    <td className="py-2.5 px-3 text-[10px] text-[#6B7280]">{s.created_at ? new Date(s.created_at).toLocaleDateString() : '—'}</td>
+                    <td className="py-2.5 px-3 text-center">
+                      {s.status === 'pending' && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200"><Clock className="w-3 h-3 animate-spin" /> Pending</span>}
+                      {s.status === 'approved' && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200"><UserCheck className="w-3 h-3" /> Approved</span>}
+                      {s.status === 'rejected' && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-700 border border-red-200"><AlertTriangle className="w-3 h-3" /> Rejected</span>}
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      {s.status === 'pending' && (
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => handleReview(s.id, true)}
+                            className="px-2.5 py-1.5 bg-emerald-600 text-white text-[10px] font-bold rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-1"
+                            title="Approve"
+                          >
+                            <UserCheck className="w-3 h-3" /> Approve
+                          </button>
+                          <button
+                            onClick={() => handleReview(s.id, false)}
+                            className="px-2.5 py-1.5 bg-red-600 text-white text-[10px] font-bold rounded-lg hover:bg-red-700 transition-colors flex items-center gap-1"
+                            title="Reject"
+                          >
+                            <X className="w-3 h-3" /> Reject
+                          </button>
+                        </div>
+                      )}
+                      {s.status !== 'pending' && (
+                        <span className="text-[9px] text-[#9CA3AF]">Reviewed</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+</div>
       </div>
     </div>
   );

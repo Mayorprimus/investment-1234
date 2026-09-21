@@ -33,7 +33,7 @@ import {
   SEED_DEPOSITS,
   SEED_REFERRALS,
 } from './pages/AdminPanel';
-import { getState, saveState, registerAccount, loginAccount, saveAccount, changeAccountPassword, getAuthToken, adjustUserBalance, submitP2POffer, approveP2POffer, rejectP2POffer, submitP2PPayment, approveP2PPayment, rejectP2PPayment, setXenaPrice, deleteUserAccount, stakeVault, claimYield, getMyState, moveP2POffer, updateLimits, adminRestartInvestment, adminCancelInvestment, adminPayoutInvestment, adminPayoutAllVaults, adminUpdateVault, adminAddVault, adminDeleteVault, adminDecideWithdrawal, redeemPromoCode, logout } from './lib/api';
+import { getState, saveState, registerAccount, loginAccount, saveAccount, changeAccountPassword, getAuthToken, adjustUserBalance, submitP2POffer, approveP2POffer, rejectP2POffer, submitP2PPayment, approveP2PPayment, rejectP2PPayment, setXenaPrice, deleteUserAccount, stakeVault, claimYield, getMyState, moveP2POffer, updateLimits, adminRestartInvestment, adminCancelInvestment, adminPayoutInvestment, adminPayoutAllVaults, adminUpdateVault, adminAddVault, adminDeleteVault, adminDecideWithdrawal, redeemPromoCode, logout, adminGetTaskSubmissions, adminReviewTask } from './lib/api';
 import { sb, mapProfileToAccount } from './lib/supabase';
 
 // Layout Components
@@ -46,6 +46,7 @@ import { MarketPage } from './pages/MarketPage';
 import { InvestmentsPage } from './pages/InvestmentsPage';
 import { P2PPage } from './pages/P2PPage';
 import { WalletPage } from './pages/WalletPage';
+import { TasksPage } from './pages/TasksPage';
 import { TransactionsPage } from './pages/TransactionsPage';
 import { SecurityPage } from './pages/SecurityPage';
 import { AnnouncementsPage } from './pages/AnnouncementsPage';
@@ -1005,6 +1006,15 @@ setBalances((prev) => ({
           />
         );
 
+      case 'tasks':
+        return (
+          <TasksPage
+            user={{ name: user.name, xenaId: user.xenaId }}
+            balances={balances}
+            xenaUsdPrice={marketStats.price}
+          />
+        );
+
       case 'profile':
         return (
           <ProfilePage
@@ -1150,6 +1160,8 @@ setBalances((prev) => ({
             onDeleteVault={handleDeleteVault}
             limits={limits}
             onUpdateLimits={handleUpdateLimits}
+            adminGetTaskSubmissions={adminGetTaskSubmissions}
+            adminReviewTask={adminReviewTask}
           />
         );
 
