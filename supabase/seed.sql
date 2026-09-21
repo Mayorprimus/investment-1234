@@ -259,6 +259,20 @@ insert into public.p2p_offers (
 on conflict (id) do nothing;
 
 --
+-- 8) SOCIAL TASKS — 7 platforms, 30 XENA each
+--
+
+insert into public.social_tasks (id, title, platform, url, description, reward_xena, sort_order) values
+  ('task-twitter', 'Follow @XenaNetwork on Twitter', 'twitter', 'https://twitter.com/XenaNetwork', 'Follow our official X (Twitter) account and submit your @handle', 30, 1),
+  ('task-telegram', 'Join Xena Community on Telegram', 'telegram', 'https://t.me/XenaNetwork', 'Join our Telegram group and submit your @username', 30, 2),
+  ('task-youtube', 'Subscribe to Xena YouTube Channel', 'youtube', 'https://youtube.com/@XenaNetwork', 'Subscribe to our YouTube channel and submit your channel name', 30, 3),
+  ('task-instagram', 'Follow @XenaNetwork on Instagram', 'instagram', 'https://instagram.com/XenaNetwork', 'Follow our Instagram and submit your @handle', 30, 4),
+  ('task-discord', 'Join Xena Discord Server', 'discord', 'https://discord.gg/XenaNetwork', 'Join our Discord and submit your username#tag', 30, 5),
+  ('task-tiktok', 'Follow @XenaNetwork on TikTok', 'tiktok', 'https://tiktok.com/@XenaNetwork', 'Follow our TikTok and submit your @handle', 30, 6),
+  ('task-linkedin', 'Follow Xena Network on LinkedIn', 'custom', 'https://linkedin.com/company/XenaNetwork', 'Follow our LinkedIn page and submit your profile URL', 30, 7)
+on conflict (id) do update set reward_xena = excluded.reward_xena, url = excluded.url;
+
+--
 -- DONE — sign in with admin12345@gmail.com / admin12345 (admin portal),
 -- or alex.morgan@xena.fi / xena-user-demo (showcase user).
 --

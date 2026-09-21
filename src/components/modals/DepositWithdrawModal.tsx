@@ -122,21 +122,24 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
     }
   }, [withdrawCoin, savedWallets]);
 
-  const rate = Math.max(0.0001, xenaNgnRate);
+  // FX rate: 1 USD = 1330 NGN (used for NGN <-> USD conversion)
+  const FX_NGN_PER_USD = 1330;
   const isNigeria = country?.toLowerCase() === 'nigeria';
   const minDepositNgn = limits?.min_deposit_ngn ?? 5000;
   const minWithdrawalNgn = limits?.min_withdrawal_ngn ?? 5000;
-  const minDepositUsd = Math.round(minDepositNgn / rate);
-  const minWithdrawalUsd = Math.round(minWithdrawalNgn / rate);
+  // Convert NGN limits to USD using FX rate (not XENA rate)
+  const minDepositUsd = Math.round(minDepositNgn / FX_NGN_PER_USD);
+  const minWithdrawalUsd = Math.round(minWithdrawalNgn / FX_NGN_PER_USD);
 
   const minDeposit = isNigeria ? minDepositNgn : minDepositUsd;
   const minWithdrawal = isNigeria ? minWithdrawalNgn : minWithdrawalUsd;
 
-  const xenaFromNgn = (n: number) => Math.round((n / rate) * 10000) / 10000;
+  // XENA rate for display/conversion: 1 XENA = xenaNgnRate NGN
+  const xenaFromNgn = (n: number) => Math.round((n / xenaNgnRate) * 10000) / 10000;
   const fmtNgn = (n: number) => `₦${Math.round(n).toLocaleString('en-US')}`;
   const fmtUsd = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
   const fmtAmount = isNigeria ? fmtNgn : fmtUsd;
-  const ngnFromXena = (x: number) => Math.round(x * rate);
+  const ngnFromXena = (x: number) => Math.round(x * xenaNgnRate);
 
   if (!isOpen) return null;
 

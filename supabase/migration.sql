@@ -1687,6 +1687,132 @@ begin
   return jsonb_build_object('ok', true, 'amount', v_reward, 'code', v_code, 'title', 'Redeemed Promo Code: ' || v_code, 'label', v_label);
 end $$;
 
+-- 
+-- SOCIAL TASKS & REWARDS
+--
+
+-- Task types: twitter, telegram, youtube, instagram, discord, tiktok, custom
+create table if not exists public.social_tasks (
+  id text primary key,
+  title text not null,
+  platform text not null,
+  url text not null,
+  description text,
+  reward_xena numeric not null,
+  max_completions int default null,
+  current_completions int default 0,
+  status text default 'active',
+  sort_order int default 0,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists public.task_submissions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  task_id text not null references public.social_tasks(id) on delete cascade,
+  social_handle text not null,
+  proof_url text,
+  status text default 'pending',
+  admin_note text,
+  reviewed_by uuid references public.profiles(id),
+  reviewed_at timestamptz,
+  created_at timestamptz default now()
+);
+create index if not exists task_submissions_user_idx on public.task_submissions(user_id);
+create index if not exists task_submissions_status_idx on public.task_submissions(status);
+
+-- Submit task completion (user)
+create or replace function public.submit_task(p_task_id text, p_social_handle text, p_proof_url text default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare u uuid := auth.uid(); v_task public.social_tasks%rowtype; v_count int;
+begin
+  if u is null then return jsonb_build_object('ok', false, 'error', 'Not authenticated'); end if;
+  select * into v_task from public.social_tasks where id = p_task_id and status = 'active';
+  if v_task is null then return jsonb_build_object('ok', false, 'error', 'Task not found or inactive'); end if;
+  select count(*) into v_count from public.task_submissions where user_id = u and task_id = p_task_id and status in ('pending','approved');
+  if v_count > 0 then return jsonb_build_object('ok', false, 'error', 'You have already submitted this task'); end if;
+  -- Global daily limit (1000 submissions/day across all users)
+  select count(*) into v_count from public.task_submissions where created_at >= now() - interval '24 hours';
+  if v_count >= 1000 then return jsonb_build_object('ok', false, 'error', 'Daily submission limit reached. Try again tomorrow.'); end if;
+  insert into public.task_submissions (user_id, task_id, social_handle, proof_url)
+  values (u, p_task_id, p_social_handle, p_proof_url);
+  return jsonb_build_object('ok', true, 'message', 'Submitted for admin review');
+end $$;
+
+-- Admin approves/rejects submission
+create or replace function public.admin_review_task(p_submission_id uuid, p_approve boolean, p_note text default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare u uuid := auth.uid(); v_sub public.task_submissions%rowtype; v_task public.social_tasks%rowtype;
+    v_profile public.profiles%rowtype; v_bal jsonb; v_amt numeric;
+begin
+  if not public.is_admin() then return jsonb_build_object('ok', false, 'error', 'Admin access required'); end if;
+  select * into v_sub from public.task_submissions where id = p_submission_id;
+  if v_sub is null then return jsonb_build_object('ok', false, 'error', 'Submission not found'); end if;
+  if v_sub.status != 'pending' then return jsonb_build_object('ok', false, 'error', 'Already reviewed'); end if;
+
+  select * into v_task from public.social_tasks where id = v_sub.task_id;
+  select * into v_profile from public.profiles where id = v_sub.user_id;
+
+  if p_approve then
+    v_amt := v_task.reward_xena;
+    v_bal := v_profile.balances;
+    v_bal := jsonb_set(v_bal, '{availableXena}', ((v_bal->>'availableXena')::numeric + v_amt)::numeric::text::jsonb);
+    v_bal := jsonb_set(v_bal, '{totalXena}', ((v_bal->>'totalXena')::numeric + v_amt)::numeric::text::jsonb);
+    v_bal := jsonb_set(v_bal, '{totalBalance}', ((v_bal->>'totalBalance')::numeric + v_amt)::numeric::text::jsonb);
+    update public.profiles set balances = v_bal, updated_at = now() where id = v_sub.user_id;
+    update public.social_tasks set current_completions = current_completions + 1 where id = v_task.id;
+    update public.task_submissions set status = 'approved', admin_note = p_note, reviewed_by = u, reviewed_at = now() where id = p_submission_id;
+    return jsonb_build_object('ok', true, 'rewarded', v_amt);
+  else
+    update public.task_submissions set status = 'rejected', admin_note = p_note, reviewed_by = u, reviewed_at = now() where id = p_submission_id;
+    return jsonb_build_object('ok', true, 'rejected', true);
+  end if;
+end $$;
+
+-- Admin gets all submissions (for Tasks tab)
+create or replace function public.admin_get_task_submissions()
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_subs jsonb;
+begin
+  if not public.is_admin() then return jsonb_build_object('ok', false, 'error', 'Admin access required'); end if;
+  select jsonb_agg(to_jsonb(s) order by s.created_at desc) into v_subs
+  from (
+    select ts.*, p.name as user_name, p.email as user_email, st.title as task_title, st.platform as task_platform, st.reward_xena as task_reward
+    from public.task_submissions ts
+    join public.profiles p on p.id = ts.user_id
+    join public.social_tasks st on st.id = ts.task_id
+  ) s;
+  return jsonb_build_object('ok', true, 'submissions', coalesce(v_subs, '[]'::jsonb));
+end $$;
+
+-- Public gets active tasks
+create or replace function public.get_social_tasks()
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_tasks jsonb;
+begin
+  select jsonb_agg(to_jsonb(t) order by t.sort_order asc) into v_tasks
+  from public.social_tasks t
+  where t.status = 'active';
+  return jsonb_build_object('ok', true, 'tasks', coalesce(v_tasks, '[]'::jsonb));
+end $$;
+
+-- User gets their submissions
+create or replace function public.get_my_task_submissions()
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare u uuid := auth.uid(); v_subs jsonb;
+begin
+  if u is null then return jsonb_build_object('ok', false, 'error', 'Not authenticated'); end if;
+  select jsonb_agg(to_jsonb(s) order by s.created_at desc) into v_subs
+  from (
+    select ts.*, st.title as task_title, st.platform as task_platform, st.reward_xena as task_reward, st.url as task_url
+    from public.task_submissions ts
+    join public.social_tasks st on st.id = ts.task_id
+    where ts.user_id = u
+  ) s;
+  return jsonb_build_object('ok', true, 'submissions', coalesce(v_subs, '[]'::jsonb));
+end $$;
+
 --
 -- GRANTS
 --
@@ -1750,3 +1876,12 @@ grant execute on function public.admin_delete_vault to authenticated;
 
 grant execute on function public.record_pending_payment to service_role;
 grant execute on function public.credit_payment to service_role;
+
+grant execute on function public.submit_task to authenticated;
+grant execute on function public.admin_review_task to authenticated;
+grant execute on function public.admin_get_task_submissions to authenticated;
+grant execute on function public.get_social_tasks to anon, authenticated;
+grant execute on function public.get_my_task_submissions to authenticated;
+
+grant select on table public.social_tasks to anon, authenticated;
+grant select on table public.task_submissions to authenticated;

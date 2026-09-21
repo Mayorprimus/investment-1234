@@ -626,3 +626,79 @@ export async function adminDecideDeposit(depositId: string, decision: 'approved'
     return { ok: false, error: 'Network error.' };
   }
 }
+
+// --- Social Tasks API ---
+export interface SocialTask {
+  id: string;
+  title: string;
+  platform: 'twitter' | 'telegram' | 'youtube' | 'instagram' | 'discord' | 'tiktok' | 'custom';
+  url: string;
+  description: string;
+  rewardXena: number;
+  maxCompletions: number | null;
+  currentCompletions: number;
+  status: 'active' | 'paused' | 'archived';
+  sortOrder: number;
+}
+
+export interface TaskSubmission {
+  id: string;
+  userId: string;
+  taskId: string;
+  socialHandle: string;
+  proofUrl: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  adminNote: string | null;
+  createdAt: string;
+  userName?: string;
+  userEmail?: string;
+  taskTitle?: string;
+  taskPlatform?: string;
+  taskReward?: number;
+  taskUrl?: string;
+}
+
+export async function getSocialTasks(): Promise<{ ok: boolean; error?: string; tasks?: SocialTask[] }> {
+  try {
+    const res = await callRpc<any>('get_social_tasks');
+    return { ok: res?.ok ?? false, error: res?.error, tasks: res?.tasks };
+  } catch (e: any) {
+    return { ok: false, error: describeAuthError(e) };
+  }
+}
+
+export async function getMyTaskSubmissions(): Promise<{ ok: boolean; error?: string; submissions?: TaskSubmission[] }> {
+  try {
+    const res = await callRpc<any>('get_my_task_submissions');
+    return { ok: res?.ok ?? false, error: res?.error, submissions: res?.submissions };
+  } catch (e: any) {
+    return { ok: false, error: describeAuthError(e) };
+  }
+}
+
+export async function submitTask(taskId: string, socialHandle: string, proofUrl?: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await callRpc<any>('submit_task', { p_task_id: taskId, p_social_handle: socialHandle, p_proof_url: proofUrl ?? null });
+    return { ok: res?.ok ?? false, error: res?.error };
+  } catch (e: any) {
+    return { ok: false, error: describeAuthError(e) };
+  }
+}
+
+export async function adminGetTaskSubmissions(): Promise<{ ok: boolean; error?: string; submissions?: TaskSubmission[] }> {
+  try {
+    const res = await callRpc<any>('admin_get_task_submissions');
+    return { ok: res?.ok ?? false, error: res?.error, submissions: res?.submissions };
+  } catch (e: any) {
+    return { ok: false, error: describeAuthError(e) };
+  }
+}
+
+export async function adminReviewTask(submissionId: string, approve: boolean, note?: string): Promise<{ ok: boolean; error?: string; rewarded?: number }> {
+  try {
+    const res = await callRpc<any>('admin_review_task', { p_submission_id: submissionId, p_approve: approve, p_note: note ?? null });
+    return { ok: res?.ok ?? false, error: res?.error, rewarded: res?.rewarded };
+  } catch (e: any) {
+    return { ok: false, error: describeAuthError(e) };
+  }
+}
