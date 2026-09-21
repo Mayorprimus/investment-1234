@@ -29,7 +29,7 @@ interface P2PPageProps {
 
 const EXPRESS_CHANNELS = ['Revolut', 'Bank Transfer', 'Wise', 'SEPA Instant'];
 
-export const P2PPage: React.FC<P2PPageProps> = ({ offers, onSelectOffer, onAddOffer, defaultPrice = 2.85 }) => {
+export const P2PPage: React.FC<P2PPageProps> = ({ offers, onSelectOffer, onAddOffer, defaultPrice = 0.0002 }) => {
   const [viewMode, setViewMode] = useState<'marketplace' | 'express'>('marketplace');
   const [tradeType, setTradeType] = useState<'BUY' | 'SELL'>('BUY');
   const [selectedAsset, setSelectedAsset] = useState<string>('XENA');
@@ -50,7 +50,7 @@ export const P2PPage: React.FC<P2PPageProps> = ({ offers, onSelectOffer, onAddOf
   const [adSuccessToast, setAdSuccessToast] = useState<string | null>(null);
 
   const [adTradeType, setAdTradeType] = useState<'BUY' | 'SELL'>('BUY');
-  const [adPrice, setAdPrice] = useState<string>(String(defaultPrice || 2.85));
+  const [adPrice, setAdPrice] = useState<string>(String(defaultPrice || 0.0002));
   const [adTotalXena, setAdTotalXena] = useState<string>('1000');
   const [adMinLimit, setAdMinLimit] = useState<string>('50');
   const [adMaxLimit, setAdMaxLimit] = useState<string>('2500');
@@ -111,7 +111,7 @@ export const P2PPage: React.FC<P2PPageProps> = ({ offers, onSelectOffer, onAddOf
       completedOrders: 1,
       ordersCount: 1,
       type: adTradeType,
-      pricePerXena: parseFloat(adPrice) || defaultPrice || 2.85,
+      pricePerXena: parseFloat(adPrice) || defaultPrice || 0.0002,
       currency: selectedCurrency,
       minLimit: parseFloat(adMinLimit) || 50,
       maxLimit: parseFloat(adMaxLimit) || 2500,
@@ -248,7 +248,7 @@ export const P2PPage: React.FC<P2PPageProps> = ({ offers, onSelectOffer, onAddOf
                 <div>
                   <p className="text-[9px] text-[#6B7280] font-medium">{tradeType === 'BUY' ? 'You receive' : 'You sell'}</p>
                   <p className="text-lg font-extrabold text-[#6D28D9] font-mono leading-tight">{expressCalculatedXena} XENA</p>
-                  <p className="text-[9px] text-[#6B7280]">Unit {selectedCurrency} {expressMatchedOffer?.pricePerXena.toFixed(4) || (defaultPrice || 2.85).toFixed(4)}</p>
+                  <p className="text-[9px] text-[#6B7280]">Unit {selectedCurrency} {expressMatchedOffer?.pricePerXena.toFixed(4) || (defaultPrice || 0.0002).toFixed(4)}</p>
                 </div>
                 <span className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100">0% Fee</span>
               </div>

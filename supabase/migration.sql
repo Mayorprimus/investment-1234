@@ -29,7 +29,7 @@ create table if not exists public.profiles (
   two_factor_enabled boolean default false,
   pin_set boolean default false,
   verified_accounts_count integer default 0,
-  balances jsonb not null default '{"totalXena":0,"totalBalance":0,"usdRate":1,"change24hAmount":0,"change24hPercent":0,"availableXena":0,"investedXena":0,"averageBuyPrice":0,"currentPrice":2.85,"stakedXena":0,"lockedInOrders":0,"nairaBalance":0,"xenaNgnRate":1500}'::jsonb,
+  balances jsonb not null default '{"totalXena":0,"totalBalance":0,"usdRate":0.0002,"change24hAmount":0,"change24hPercent":0,"availableXena":0,"investedXena":0,"averageBuyPrice":0,"currentPrice":0.0002,"stakedXena":0,"lockedInOrders":0,"nairaBalance":0,"xenaNgnRate":0.266}'::jsonb,
   transactions jsonb not null default '[]'::jsonb,
   notifications jsonb not null default '[]'::jsonb,
   redeemed_bonus_codes jsonb not null default '[]'::jsonb,
@@ -96,7 +96,7 @@ create table if not exists public.p2p_offers (
   completed_orders integer default 0,
   orders_count integer default 0,
   type text,
-  price_per_xena numeric default 2.85,
+  price_per_xena numeric default 0.0002,
   currency text default 'USD',
   min_limit numeric default 50,
   max_limit numeric default 2500,
@@ -123,7 +123,7 @@ create table if not exists public.p2p_trades (
   fiat_amount numeric default 0,
   currency text default 'USD',
   xena_amount numeric default 0,
-  price_per_xena numeric default 2.85,
+  price_per_xena numeric default 0.0002,
   buyer_email text,
   status text default 'awaiting_validation',
   reference text,
@@ -423,12 +423,12 @@ declare
   v_escrow jsonb;
 begin
   select (value->>'price')::numeric into v_price from public.xena_settings where key = 'price';
-  if v_price is null then v_price := 2.85; end if;
+  if v_price is null then v_price := 0.0002; end if;
   select (value->>'ngnRate')::numeric into v_rate from public.xena_settings where key = 'xena_ngn_rate';
   if v_rate is null then
     select (value->>'xenaNgnRate')::numeric into v_rate from public.xena_settings where key = 'limits';
   end if;
-  if v_rate is null then v_rate := 1500; end if;
+  if v_rate is null then v_rate := 0.266; end if;
   select value into v_limits from public.xena_settings where key = 'limits';
   if v_limits is null then v_limits := '{"min_deposit_ngn":3000,"min_withdrawal_ngn":3000}'::jsonb; end if;
   select value into v_flags from public.xena_settings where key = 'flags';
@@ -498,9 +498,9 @@ begin
     'conversations', coalesce((select jsonb_agg(to_jsonb(c) order by c.updated_at desc nulls last) from support_conversations c), '[]'::jsonb),
     'settings', coalesce((select value from xena_settings where key = 'flags'), '{}'::jsonb),
     'limits', coalesce((select value from xena_settings where key = 'limits'), '{}'::jsonb),
-    'price', coalesce((select (value->>'price')::numeric from xena_settings where key = 'price'), 2.85),
+    'price', coalesce((select (value->>'price')::numeric from xena_settings where key = 'price'), 0.0002),
     'xenaNgnRate', coalesce((select (value->>'ngnRate')::numeric from xena_settings where key = 'xena_ngn_rate'),
-      (select (value->>'xenaNgnRate')::numeric from xena_settings where key = 'limits'), 1500)
+      (select (value->>'xenaNgnRate')::numeric from xena_settings where key = 'limits'), 0.266)
   ) into v;
   return v;
 end $$;
@@ -556,7 +556,7 @@ end $$;
 
 create or replace function public.admin_set_price(p_price numeric, p_ngn_rate numeric default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare p numeric := round(p_price, 4); r numeric := round(coalesce(p_ngn_rate, 1500), 2);
+declare p numeric := round(p_price, 4); r numeric := round(coalesce(p_ngn_rate, 0.266), 4);
 begin
   if not public.is_admin() then return jsonb_build_object('ok', false, 'error', 'Admin access required.'); end if;
   if p is null or p <= 0 then return jsonb_build_object('ok', false, 'error', 'Enter a valid price greater than 0.'); end if;
@@ -570,8 +570,12 @@ begin
   update public.p2p_offers set price_per_xena = p;
   -- Push the new price + ngn rate into every profile's balances blob so
   -- wallets, holdings and charts all show the same number instantly.
+  -- `usdRate` mirrors the price (it is the USD value of 1 XENA), so wallet
+  -- fiat totals stay consistent with the market card too.
   update public.profiles
-    set balances = jsonb_set(jsonb_set(balances, '{currentPrice}', to_jsonb(p)), '{xenaNgnRate}', to_jsonb(r)),
+    set balances = jsonb_set(
+          jsonb_set(jsonb_set(balances, '{currentPrice}', to_jsonb(p)), '{usdRate}', to_jsonb(p)),
+          '{xenaNgnRate}', to_jsonb(r)),
         updated_at = now()
     where balances is not null;
   return jsonb_build_object('ok', true, 'price', p, 'xenaNgnRate', r);
@@ -759,7 +763,7 @@ begin
     coalesce((offer->>'completedOrders')::int, 0),
     coalesce((offer->>'ordersCount')::int, 0),
     coalesce(offer->>'type', 'SELL'),
-    coalesce((offer->>'pricePerXena')::numeric, (select (value->>'price')::numeric from public.xena_settings where key = 'price'), 2.85),
+    coalesce((offer->>'pricePerXena')::numeric, (select (value->>'price')::numeric from public.xena_settings where key = 'price'), 0.0002),
     coalesce(offer->>'currency', 'USD'),
     coalesce((offer->>'minLimit')::numeric, 50),
     coalesce((offer->>'maxLimit')::numeric, 2500),
@@ -884,7 +888,7 @@ begin
     coalesce((trade->>'fiatAmount')::numeric, 0),
     coalesce(trade->>'currency', 'USD'),
     coalesce((trade->>'xenaAmount')::numeric, 0),
-    coalesce((trade->>'pricePerXena')::numeric, 2.85),
+    coalesce((trade->>'pricePerXena')::numeric, 0.0002),
     v_email,
     'awaiting_validation',
     coalesce(trade->>'reference', 'XN-' || (floor(10000 + random() * 90000))::int::text || '-P2P'),
@@ -1069,7 +1073,7 @@ begin
   v_min_ngn := coalesce((v_limits->>'min_withdrawal_ngn')::numeric, 3000);
   v_ngn_rate := coalesce(
     (select (value->>'ngnRate')::numeric from public.xena_settings where key = 'xena_ngn_rate'),
-    coalesce((p.balances->>'xenaNgnRate')::numeric, 1500)
+    coalesce((p.balances->>'xenaNgnRate')::numeric, 0.266)
   );
 
 method_text := coalesce(payload->>'method', 'ngn');
@@ -1177,6 +1181,11 @@ begin
   if u is null then return jsonb_build_object('ok', false, 'error', 'Not authenticated'); end if;
   select * into v_cat from public.vault_catalog where id = p_vault_id and active = true;
   if v_cat is null then return jsonb_build_object('ok', false, 'error', 'This vault is unavailable.'); end if;
+  -- Each plan can only be held once: block a duplicate stake while the user
+  -- already has an active (unmatured) position in this vault.
+  if exists (select 1 from public.investments where user_id = u and plan_name = v_cat.name and status = 'active') then
+    return jsonb_build_object('ok', false, 'error', 'You already hold this plan. Each plan can only be purchased once.');
+  end if;
   select * into p from public.profiles where id = u;
   v_amt := coalesce(v_cat.min_deposit, 0);
   if v_amt <= 0 then v_amt := 1; end if;
@@ -1523,9 +1532,9 @@ begin
   end if;
 
   if v_first then
-    v_price := coalesce((select (value->>'price')::numeric from public.xena_settings where key = 'price'), 2.85);
+    v_price := coalesce((select (value->>'price')::numeric from public.xena_settings where key = 'price'), 0.0002);
     v_rate := coalesce((select (value->>'ngnRate')::numeric from public.xena_settings where key = 'xena_ngn_rate'),
-      coalesce((select (value->>'xenaNgnRate')::numeric from public.xena_settings where key = 'limits'), 1500));
+      coalesce((select (value->>'xenaNgnRate')::numeric from public.xena_settings where key = 'limits'), 0.266));
     if p_provider = 'flutterwave' and p_currency = 'NGN' then
       v_bonus_xena := round(1500 / v_rate, 4); -- ₦1,500 welcome bonus
       v_bonus_title := 'Welcome Bonus — ₦1,500';

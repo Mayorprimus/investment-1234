@@ -14,27 +14,27 @@ export const INITIAL_USER_PROFILE: UserProfile = {
 
 export const INITIAL_BALANCES: UserBalances = {
   totalXena: 2850.50,
-  usdRate: 1.0, // 1 XENA ≈ $1.00 USD (or pegged / calculated dynamically)
+  usdRate: 0.0002, // 1 XENA ≈ $0.0002 USD (mirrors market price)
   change24hAmount: 320.50,
   change24hPercent: 12.65,
   availableXena: 2850.50,
   investedXena: 0.00,
-  averageBuyPrice: 2.1500,
-  currentPrice: 2.8500,
+  averageBuyPrice: 0.0002,
+  currentPrice: 0.0002,
   stakedXena: 0.00,
   lockedInOrders: 0.00,
   nairaBalance: 2450000.00,
-  xenaNgnRate: 1500,
+  xenaNgnRate: 0.266,
 };
 
 export const INITIAL_MARKET_STATS: MarketStats = {
   pair: 'XENA/USDT',
-  price: 2.8500,
+  price: 0.0002,
   change24h: 12.65,
-  high24h: 2.9400,
-  low24h: 2.4850,
+  high24h: 0.00021,
+  low24h: 0.00019,
   volume24hXena: 1420500,
-  volume24hUsdt: 4048425,
+  volume24hUsdt: 284.10,
 };
 
 export const INITIAL_TRANSACTIONS: Transaction[] = [

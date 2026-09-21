@@ -17,7 +17,7 @@ export const BuySellModal: React.FC<BuySellModalProps> = ({
   isOpen,
   onClose,
   initialMode = 'buy',
-  currentPrice = 2.8500,
+  currentPrice = 0.0002,
   availableXena,
   onSuccess,
 }) => {

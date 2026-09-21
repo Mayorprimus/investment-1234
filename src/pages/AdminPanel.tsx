@@ -212,7 +212,7 @@ export const AdminPanel: React.FC<Props> = ({
   onAdjustBalance,
   onDeleteAccount,
   xenaPrice,
-  xenaNgnRate = 1500,
+  xenaNgnRate = 0.266,
   onSetXenaPrice,
   disputes,
   setDisputes,
@@ -273,8 +273,8 @@ export const AdminPanel: React.FC<Props> = ({
   const [adjustBusy, setAdjustBusy] = useState(false);
   const [adjustError, setAdjustError] = useState<string | null>(null);
 
-  const [priceInput, setPriceInput] = useState<string>(String(xenaPrice || 2.85));
-  const [ngnRateInput, setNgnRateInput] = useState<string>(String(xenaNgnRate || 1500));
+  const [priceInput, setPriceInput] = useState<string>(String(xenaPrice || 0.0002));
+  const [ngnRateInput, setNgnRateInput] = useState<string>(String(xenaNgnRate || 0.266));
   const [priceBusy, setPriceBusy] = useState(false);
   const [priceError, setPriceError] = useState<string | null>(null);
 
@@ -1667,7 +1667,7 @@ export const AdminPanel: React.FC<Props> = ({
                       type="number"
                       step="any"
                       min="0"
-                      placeholder="2.85"
+                      placeholder="0.0002"
                       className="w-full px-3 py-2 bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#7C3AED] transition-all"
                     />
                   </div>
@@ -1679,7 +1679,7 @@ export const AdminPanel: React.FC<Props> = ({
                       type="number"
                       step="any"
                       min="0"
-                      placeholder="1500"
+                      placeholder="0.266"
                       className="w-full px-3 py-2 bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#7C3AED] transition-all"
                     />
                   </div>
@@ -1687,7 +1687,7 @@ export const AdminPanel: React.FC<Props> = ({
                     <TrendingUp className="w-3.5 h-3.5" /> {priceBusy ? 'Applying...' : 'Set Price & Rate for All Users'}
                   </button>
                   <div className="text-right hidden sm:block">
-                    <span className="text-[10px] text-[#9CA3AF]">Now: <span className="font-mono font-bold text-[#6D28D9]">${xenaPrice.toFixed(4)} · ₦{Number(xenaNgnRate || 1500).toLocaleString()}</span></span>
+                    <span className="text-[10px] text-[#9CA3AF]">Now: <span className="font-mono font-bold text-[#6D28D9]">${xenaPrice.toFixed(4)} · ₦{Number(xenaNgnRate || 0.266).toLocaleString()}</span></span>
                   </div>
                 </div>
                 {priceError && <p className="text-[10px] font-bold text-red-600 mt-2">{priceError}</p>}

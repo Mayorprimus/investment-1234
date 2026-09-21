@@ -72,9 +72,9 @@ export function describeAuthError(err: unknown): string {
   }
   return msg || 'Network error. Please try again.';
 }
+export const XENA_NGN_RATE = 0.266;
 
-export const XENA_NGN_RATE = 1500;
-export const DEFAULT_PRICE = 2.85;
+export const DEFAULT_PRICE = 0.0002;
 
 export async function getSessionToken(): Promise<string | null> {
   try {
@@ -97,7 +97,7 @@ export function mapBalances(b: any): UserBalances {
   return {
     totalXena: derivedTotal,
     totalBalance: derivedTotal,
-    usdRate: Number(b?.usdRate || 1),
+    usdRate: Number(b?.usdRate || DEFAULT_PRICE),
     change24hAmount: Number(b?.change24hAmount || 0),
     change24hPercent: Number(b?.change24hPercent || 0),
     availableXena,

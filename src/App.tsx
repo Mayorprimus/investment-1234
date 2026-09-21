@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { VaultPackage } from './types';
 import {
   INITIAL_USER_PROFILE,
@@ -604,7 +604,12 @@ verifiedAccountsCount: user.verifiedAccountsCount,
     return { ok: true };
   };
 
+  const stakingInFlight = useRef<Set<string>>(new Set());
+
   const handleStakeNewPlan = async (plan: InvestmentPlan): Promise<boolean> => {
+    // Block a second concurrent purchase of the same plan (double-tap race)
+    // before the server/realtime round-trip marks it as held.
+    if (stakingInFlight.current.has(plan.id)) return false;
     if (balances.availableXena < plan.investedAmount) {
       alert(`Insufficient available XENA to stake this plan. Minimum required: ${plan.investedAmount.toFixed(2)} XENA`);
       return false;
@@ -615,10 +620,17 @@ verifiedAccountsCount: user.verifiedAccountsCount,
       handleNavSelect('login');
       return false;
     }
+    stakingInFlight.current.add(plan.id);
     const res = await stakeVault(plan.id);
+    stakingInFlight.current.delete(plan.id);
     if (!res.ok) {
       alert(res.error || 'Unable to stake this vault.');
       return false;
+    }
+    // Optimistically mark the plan as held so the buy button stays disabled
+    // until the realtime sync confirms it from the server.
+    if (res.investment) {
+      setInvestments((prev) => (prev.some((p) => p.name === plan.name) ? prev : [res.investment, ...prev]));
     }
     return true;
   };
@@ -794,6 +806,10 @@ verifiedAccountsCount: user.verifiedAccountsCount,
     setBalances((prev) => ({
       ...prev,
       currentPrice: p,
+      // `usdRate` (USD value of 1 XENA) must follow the global price too —
+      // the wallet/profile pages use it for fiat conversion, and a stale
+      // per-profile value made their totals disagree with the home page.
+      usdRate: p,
       ...(ngnRate != null ? { xenaNgnRate: Number(ngnRate) } : {}),
     }));
     if (ngnRate != null) {
@@ -840,8 +856,10 @@ verifiedAccountsCount: user.verifiedAccountsCount,
       // Global price/NGN-rate are authoritative (kept in sync by applyGlobalPrice).
       // The stored per-profile values are stale and would otherwise re-clobber
       // these on every realtime event, making displayed XENA amounts flicker.
-      currentPrice: prev.currentPrice || acc.balances.currentPrice || 2.85,
-      xenaNgnRate: prev.xenaNgnRate || acc.balances.xenaNgnRate || 1500,
+      // `usdRate` mirrors the price so wallet/profile fiat totals match the home page.
+      currentPrice: prev.currentPrice || acc.balances.currentPrice || 0.0002,
+      usdRate: prev.usdRate || acc.balances.usdRate || 0.0002,
+      xenaNgnRate: prev.xenaNgnRate || acc.balances.xenaNgnRate || 0.266,
     }));
     setTransactions(acc.transactions || []);
     setInvestments(acc.investments || []);

@@ -30,7 +30,7 @@ const CATEGORY_META: Record<string, { label: string; accent: string; grad: strin
 const defaultMeta = { label: 'Investment Plan', accent: 'bg-purple-50 text-[#6D28D9] border-purple-100', grad: 'from-purple-500 to-fuchsia-500', glow: 'shadow-purple-200/40' };
 
 // ---- Currency configuration (base = USD) ----
-const FX_RATES: Record<string, number> = { USD: 1, EUR: 0.92, GBP: 0.79, NGN: 1500 };
+const FX_RATES: Record<string, number> = { USD: 1, EUR: 0.92, GBP: 0.79, NGN: 1330 };
 const FX_SYMBOLS: Record<string, string> = { USD: '$', EUR: '€', GBP: '£', NGN: '₦' };
 
 const catalogPlans = [
@@ -38,7 +38,7 @@ const catalogPlans = [
     id: 'cat-flex',
     name: 'Micro Starter',
     category: 'Flexible',
-    apy: 12.0,
+    apy: 16.67,
     duration: '30-Day Lock',
     days: 30,
     priceUsd: 3,
@@ -135,7 +135,7 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
 
   // Global price is authoritative; guard against a bad/zero value so division
   // never explodes if settings are briefly missing.
-  const xenaUsdPrice = Math.max(0.0001, Number(priceProp) || 2.85);
+  const xenaUsdPrice = Math.max(0.0001, Number(priceProp) || 0.0002);
   const fxRate = FX_RATES[currency] ?? 1;
   const fxSymbol = FX_SYMBOLS[currency] ?? '$';
   const formatFiat = (usd: number, dp = 2) => `${fxSymbol}${(usd * fxRate).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}`;
@@ -266,7 +266,7 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
           <div className="p-2.5 bg-amber-50/60 rounded-xl border border-amber-100">
             <span className="text-[9px] text-amber-600 uppercase font-bold block">Daily Payout</span>
             <span className="text-sm font-extrabold text-amber-700 font-mono block mt-0.5">+{dailyPayoutXena.toFixed(2)} XENA</span>
-            <span className="text-[9px] text-amber-600 block mt-0.5">≈ +${(dailyPayoutXena * balances.usdRate).toFixed(2)}/day</span>
+            <span className="text-[9px] text-amber-600 block mt-0.5">≈ +${(dailyPayoutXena * xenaUsdPrice).toFixed(2)}/day</span>
           </div>
         </div>
 
@@ -350,6 +350,10 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
             // Prevent buying a package that is already active (dedupe by name)
             const alreadyActive = plans.some((p) => p.name === plan.name);
             const xenaQty = plan.priceUsd / xenaUsdPrice;
+            // Maturity value: APY is the full 30-day term return, so
+            // principal grows by exactly apy% over the lock (e.g. $3 → $3.50).
+            const maturityUsd = plan.priceUsd * (1 + (plan.apy || 0) / 100);
+            const maturityXena = maturityUsd / xenaUsdPrice;
             return (
               <div key={plan.id} className="group relative bg-white border border-[#EDE9FE] rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all flex flex-col p-4">
                 <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${meta.grad}`} />
@@ -369,6 +373,15 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
                   <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md bg-[#F8F7FC] border border-[#EDE9FE] text-[10px] font-bold text-[#6D28D9]">
                     ≈ {formatXena(plan.priceUsd)}
                   </span>
+                </div>
+
+                {/* Gets back: principal + projected yield at maturity */}
+                <div className="mb-3 border border-[#EDE9FE] rounded-lg bg-gradient-to-r from-purple-50/60 to-emerald-50/60 p-2">
+                  <span className="text-[9px] font-bold text-[#6B7280] uppercase tracking-wide block">You Get Back</span>
+                  <div className="flex items-baseline justify-between gap-2 mt-1">
+                    <span className="text-[13px] font-black text-[#16A34A] font-mono">{formatFiat(maturityUsd)}</span>
+                    <span className="text-[10px] font-bold text-[#16A34A] font-mono">≈ {formatXena(maturityXena)}</span>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 mb-3 text-center">

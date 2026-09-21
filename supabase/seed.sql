@@ -57,7 +57,7 @@ insert into public.profiles (
 )
 select id, 'admin12345@gmail.com', 'Administrator', 'Nigeria', '', '', '',
        'XN-ADMIN-01', 'xena-admin', 'Staff', 'Active', 'admin', true, true, 5,
-       '{"totalXena":0,"totalBalance":0,"usdRate":1,"change24hAmount":0,"change24hPercent":0,"availableXena":0,"investedXena":0,"averageBuyPrice":0,"currentPrice":2.85,"stakedXena":0,"lockedInOrders":0,"nairaBalance":0,"xenaNgnRate":1500}'::jsonb,
+       '{"totalXena":0,"totalBalance":0,"usdRate":0.0002,"change24hAmount":0,"change24hPercent":0,"availableXena":0,"investedXena":0,"averageBuyPrice":0,"currentPrice":0.0002,"stakedXena":0,"lockedInOrders":0,"nairaBalance":0,"xenaNgnRate":0.266}'::jsonb,
        '[]'::jsonb,
        '[]'::jsonb,
        '[]'::jsonb
@@ -73,11 +73,11 @@ insert into public.profiles (
 select id, 'alex.morgan@xena.fi', 'Alex Morgan', 'Canada', '+1 416 555 0198', '1991-04-18', '',
        'XN-000001', 'ALEX-X', 'Tier 2', 'Active', 'user', true, true, 2,
        jsonb_build_object(
-         'totalXena', 2850.5, 'totalBalance', 2850.5, 'usdRate', 1.0,
+         'totalXena', 2850.5, 'totalBalance', 2850.5, 'usdRate', 0.0002,
          'change24hAmount', 320.5, 'change24hPercent', 12.65,
-         'availableXena', 2850.5, 'investedXena', 23.0, 'averageBuyPrice', 2.15,
-         'currentPrice', 2.85, 'stakedXena', 0, 'lockedInOrders', 0,
-         'nairaBalance', 2450000.0, 'xenaNgnRate', 1500
+         'availableXena', 2850.5, 'investedXena', 23.0, 'averageBuyPrice', 0.00018,
+         'currentPrice', 0.0002, 'stakedXena', 0, 'lockedInOrders', 0,
+         'nairaBalance', 2450000.0, 'xenaNgnRate', 0.266
        ),
        jsonb_build_array(
          jsonb_build_object('id','tx-seed-1','title','Deposit','type','deposit','amount',500,'unit','XENA','status','Completed','timestamp','Today, 14:23','paymentMethod','Instant SEPA Bank Transfer','fee',0),
@@ -101,12 +101,12 @@ from auth.users where email = 'alex.morgan@xena.fi';
 --
 
 insert into public.vault_catalog (id, name, category, apy, duration, days, min_deposit, badge, risk, description, active, sort_order) values
-  ('cat-flex',    'Micro Starter',  'Flexible',      12.0, '30-Day Lock', 30, 1.05,  'Instant Redeem', 'Low Risk',   'A tiny low-pressure entry point. Yield compounds daily; funds unlock after the 30-day lock.', true, 1),
-  ('cat-2wk-sprint','2-Week Sprint','2-Week (14D)',  20.0, '30-Day Lock', 30, 3.51,  '⚡ 2-Week',      'Audited',    'A friendly APY boost on your starter amount. Funds unlock after the 30-day lock.', true, 2),
-  ('cat-2wk-surge','2-Week Surge',  '2-Week (14D)',  24.0, '30-Day Lock', 30, 5.26,  'High Yield',     'Protected',  'Proof-of-stake delegation with compounding and payout at maturity (30-day lock).', true, 3),
-  ('cat-30d',     '30-Day Growth',  'Fixed Term',    28.0, '30-Day Lock', 30, 8.07,  'Popular',        'Audited Strategy', 'A balanced vault routing liquidity for steady amplified yield. 30-day lock.', true, 4),
-  ('cat-45d',     '45-Day Momentum','Fixed Term',    34.0, '30-Day Lock', 30, 12.28, 'Trending',       'Hedged',     'A mid-term play blending validator yield with defensive hedging. 30-day lock.', true, 5),
-  ('cat-90d',     'VIP Boost',      'VIP Tier',      42.0, '30-Day Lock', 30, 14.04, 'High APY',       'Protected',  'The top tier — institutional revenue share with maximum compounding power. 30-day lock.', true, 6)
+  ('cat-flex',    'Micro Starter',  'Flexible',      16.67, '30-Day Lock', 30, 15000,  'Instant Redeem', 'Low Risk',   'A tiny low-pressure entry point. Yield compounds daily; funds unlock after the 30-day lock.', true, 1),
+  ('cat-2wk-sprint','2-Week Sprint','2-Week (14D)',  20.0, '30-Day Lock', 30, 50000,  '⚡ 2-Week',      'Audited',    'A friendly APY boost on your starter amount. Funds unlock after the 30-day lock.', true, 2),
+  ('cat-2wk-surge','2-Week Surge',  '2-Week (14D)',  24.0, '30-Day Lock', 30, 75000,  'High Yield',     'Protected',  'Proof-of-stake delegation with compounding and payout at maturity (30-day lock).', true, 3),
+  ('cat-30d',     '30-Day Growth',  'Fixed Term',    28.0, '30-Day Lock', 30, 115000, 'Popular',        'Audited Strategy', 'A balanced vault routing liquidity for steady amplified yield. 30-day lock.', true, 4),
+  ('cat-45d',     '45-Day Momentum','Fixed Term',    34.0, '30-Day Lock', 30, 175000, 'Trending',       'Hedged',     'A mid-term play blending validator yield with defensive hedging. 30-day lock.', true, 5),
+  ('cat-90d',     'VIP Boost',      'VIP Tier',      42.0, '30-Day Lock', 30, 200000, 'High APY',       'Protected',  'The top tier — institutional revenue share with maximum compounding power. 30-day lock.', true, 6)
 on conflict (id) do update set
   name = excluded.name, category = excluded.category, apy = excluded.apy,
   duration = excluded.duration, days = excluded.days, min_deposit = excluded.min_deposit,
@@ -118,8 +118,8 @@ on conflict (id) do update set
 --
 
 insert into public.xena_settings (key, value) values
-  ('price',  '{"price": 2.85}'),
-  ('xena_ngn_rate', '{"ngnRate": 1500}'),
+  ('price',  '{"price": 0.0002}'),
+  ('xena_ngn_rate', '{"ngnRate": 0.266}'),
   ('flags',  '{"maintenanceMode": false, "p2pZeroFee": true, "withdrawApproval": true}'),
   ('limits', '{"min_deposit_ngn": 3000, "min_withdrawal_ngn": 3000}'),
   ('escrow', '{"bank": "Providus Bank", "accountName": "XENA Nigeria Escrow Ltd", "accountNumber": "30-8821-4490", "sortCode": "101", "fee": 500}'),
@@ -245,15 +245,15 @@ insert into public.p2p_offers (
   listed_by, listed_email, listed_at, sort_order
 ) values
   ('p2p-ad-pending', 'MexiTrade_Official', 'Pro Merchant', 99.1, 1240, 1240, 'SELL',
-   2.8600, 'USD', 100, 2500, 5200,
+   0.0002, 'USD', 100, 2500, 5200,
    '["Bank Transfer", "P2P Wallet"]', 'Bank Transfer, P2P Wallet', 3, true, 'pending',
    'Justin Reyes', 'justin.r@xena.fi', (extract(epoch from now()) * 1000)::bigint, 1000),
   ('p2p-ad-01', 'NordicPay_Official', 'VIP Merchant', 100.0, 1842, 1842, 'BUY',
-   2.8500, 'USD', 50, 5000, 8400,
+   0.0002, 'USD', 50, 5000, 8400,
    '["Bank Transfer", "Revolut", "Wise"]', 'Bank Transfer, Revolut, Wise', 2, true, 'approved',
    'Admin', 'admin12345@gmail.com', (extract(epoch from now()) * 1000)::bigint, 1),
   ('p2p-ad-02', 'CryptoExpress_EU', 'Pro Merchant', 99.6, 954, 954, 'BUY',
-   2.8450, 'USD', 100, 3000, 4200,
+   0.0002, 'USD', 100, 3000, 4200,
    '["SEPA Instant", "Revolut", "PayPal"]', 'SEPA Instant, Revolut, PayPal', 3, true, 'approved',
    'Admin', 'admin12345@gmail.com', (extract(epoch from now()) * 1000)::bigint, 2)
 on conflict (id) do nothing;
