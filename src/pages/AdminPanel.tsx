@@ -1960,9 +1960,3 @@ const TasksSection: React.FC<{
     </div>
   );
 };
-
-</div>
-      </div>
-    </div>
-  );
-};
