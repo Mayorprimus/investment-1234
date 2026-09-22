@@ -268,9 +268,14 @@ export const TasksPage: React.FC<TasksPageProps> = ({ user, balances, xenaUsdPri
           <div className="bg-white rounded-[20px] max-w-md w-full p-6 space-y-4 shadow-2xl border border-[#EDE9FE] animate-scale-up">
             <div className="flex items-center justify-between pb-3 border-b border-[#EDE9FE]">
               <div className="flex items-center gap-2">
-                <div className={`w-9 h-9 rounded-xl ${PLATFORM_COLORS[modalTask.platform]} flex items-center justify-center`}>
-                  <PLATFORM_ICONS[modalTask.platform] className="w-4 h-4 text-white" />
-                </div>
+                {(() => {
+                  const Icon = PLATFORM_ICONS[modalTask.platform];
+                  return (
+                    <div className={`w-9 h-9 rounded-xl ${PLATFORM_COLORS[modalTask.platform]} flex items-center justify-center`}>
+                      {Icon && <Icon className="w-4 h-4 text-white" />}
+                    </div>
+                  );
+                })()}
                 <h3 className="font-bold text-[#171717]">{modalTask.title}</h3>
               </div>
               <button onClick={() => setModalTask(null)} className="w-7 h-7 rounded-full bg-[#F8F7FC] hover:bg-[#EDE9FE] text-[#6B7280] flex items-center justify-center cursor-pointer font-bold">✕</button>
