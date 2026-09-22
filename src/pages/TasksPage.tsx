@@ -223,38 +223,41 @@ export const TasksPage: React.FC<TasksPageProps> = ({ user, balances, xenaUsdPri
             </span>
           </div>
           <div className="space-y-2">
-            {mySubmissions.map((sub) => (
-              <div key={sub.id} className="flex items-center justify-between p-3 rounded-xl border bg-[#F8F7FC]">
-                <div className="flex items-center gap-3">
-                  <div className={`w-9 h-9 rounded-lg ${PLATFORM_COLORS[sub.taskPlatform || ''] || 'bg-purple-500'} flex items-center justify-center`}>
-                    {sub.taskPlatform && <PLATFORM_ICONS[sub.taskPlatform] className="w-4 h-4 text-white" />}
+            {mySubmissions.map((sub) => {
+              const Icon = sub.taskPlatform ? PLATFORM_ICONS[sub.taskPlatform] : null;
+              return (
+                <div key={sub.id} className="flex items-center justify-between p-3 rounded-xl border bg-[#F8F7FC]">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-9 h-9 rounded-lg ${PLATFORM_COLORS[sub.taskPlatform || ''] || 'bg-purple-500'} flex items-center justify-center`}>
+                      {Icon && <Icon className="w-4 h-4 text-white" />}
+                    </div>
+                    <div>
+                      <p className="font-bold text-[#171717] text-sm">{sub.taskTitle || 'Task'}</p>
+                      <p className="text-[10px] text-[#6B7280]">{sub.socialHandle}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-bold text-[#171717] text-sm">{sub.taskTitle || 'Task'}</p>
-                    <p className="text-[10px] text-[#6B7280]">{sub.socialHandle}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {sub.status === 'approved' && (
-                    <>
-                      <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-200 flex items-center gap-1">
-                        <UserCheck className="w-3 h-3" /> +30 XENA
+                  <div className="flex items-center gap-2">
+                    {sub.status === 'approved' && (
+                      <>
+                        <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-200 flex items-center gap-1">
+                          <UserCheck className="w-3 h-3" /> +30 XENA
+                        </span>
+                      </>
+                    )}
+                    {sub.status === 'pending' && (
+                      <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded-full border border-amber-200 flex items-center gap-1">
+                        <Clock className="w-3 h-3 animate-spin" /> Under Review
                       </span>
-                    </>
-                  )}
-                  {sub.status === 'pending' && (
-                    <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded-full border border-amber-200 flex items-center gap-1">
-                      <Clock className="w-3 h-3 animate-spin" /> Under Review
-                    </span>
-                  )}
-                  {sub.status === 'rejected' && (
-                    <span className="text-xs font-bold text-red-700 bg-red-50 px-2 py-1 rounded-full border border-red-200 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" /> Rejected
-                    </span>
-                  )}
+                    )}
+                    {sub.status === 'rejected' && (
+                      <span className="text-xs font-bold text-red-700 bg-red-50 px-2 py-1 rounded-full border border-red-200 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" /> Rejected
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
