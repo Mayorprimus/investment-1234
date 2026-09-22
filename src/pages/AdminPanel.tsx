@@ -50,7 +50,7 @@ import {
   MessageCircle,
   Youtube,
   Instagram,
-  Discord,
+  MessagesSquare,
   Music,
   Linkedin,
 } from 'lucide-react';
@@ -1846,7 +1846,7 @@ const TasksSection: React.FC<{
       case 'telegram': return <MessageCircle className="w-4 h-4 text-white" />;
       case 'youtube': return <Youtube className="w-4 h-4 text-white" />;
       case 'instagram': return <Instagram className="w-4 h-4 text-white" />;
-      case 'discord': return <Discord className="w-4 h-4 text-white" />;
+      case 'discord': return <MessagesSquare className="w-4 h-4 text-white" />;
       case 'tiktok': return <Music className="w-4 h-4 text-white" />;
       case 'custom': return <Linkedin className="w-4 h-4 text-white" />;
       default: return <Trophy className="w-4 h-4 text-white" />;

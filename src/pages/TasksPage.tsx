@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Twitter, MessageCircle, Youtube, Instagram, Discord, Music, Linkedin, Check, Loader2, AlertCircle, X, ExternalLink, Clock, Trophy, UserCheck } from 'lucide-react';
+import { Twitter, MessageCircle, Youtube, Instagram, MessagesSquare, Music, Linkedin, Check, Loader2, AlertCircle, X, ExternalLink, Clock, Trophy, UserCheck } from 'lucide-react';
 import { SocialTask, TaskSubmission } from '../lib/api';
 import { getSocialTasks, getMyTaskSubmissions, submitTask } from '../lib/api';
 import { UserBalances } from '../types';
@@ -15,7 +15,7 @@ const PLATFORM_ICONS: Record<string, React.ComponentType<{ className?: string }>
   telegram: MessageCircle,
   youtube: Youtube,
   instagram: Instagram,
-  discord: Discord,
+  discord: MessagesSquare,
   tiktok: Music,
   custom: Linkedin,
 };
