@@ -22,9 +22,10 @@ interface MarketChartProps {
   points: number[];
   basePrice: number;
   up?: boolean;
+  changePct: number;
 }
 
-const MarketChart: React.FC<MarketChartProps> = ({ points, basePrice, up = true }) => {
+const MarketChart: React.FC<MarketChartProps> = ({ points, basePrice, up = true, changePct }) => {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -311,7 +312,7 @@ export const MarketPage: React.FC<MarketPageProps> = ({
             </div>
 
             <div className="relative mt-2">
-              <MarketChart points={points} basePrice={marketStats.price} up={up} />
+              <MarketChart points={points} basePrice={marketStats.price} up={up} changePct={changePct} />
             </div>
 
             {/* compact metric cards */}

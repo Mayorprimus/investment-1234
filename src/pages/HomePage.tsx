@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, TrendingUp, ShieldCheck, Users, PiggyBank, Clock3, Wallet, Sparkles, Plus, Check, Newspaper, Calendar, Gift, Copy, UserPlus, Zap } from 'lucide-react';
+import { ArrowRight, TrendingUp, ShieldCheck, Users, PiggyBank, Clock3, Wallet, Sparkles, Plus, Check, Newspaper, Calendar, Gift, Copy, UserPlus, Zap, Trophy } from 'lucide-react';
 import { UserProfile, UserBalances, MarketStats, InvestmentPlan, Transaction, P2POffer, Announcement } from '../types';
 import { WelcomeSection } from '../components/WelcomeSection';
 import { MainBalanceCard } from '../components/MainBalanceCard';
@@ -83,6 +83,35 @@ export const HomePage: React.FC<HomePageProps> = ({
         onRedeemBonus={onRedeemBonus}
         redeemedCodes={redeemedBonusCodes}
       />
+
+      {/* 4.5 Social Tasks & Rewards Card — Navigate to Tasks page */}
+      <div className="bg-white border border-[#EDE9FE] rounded-[24px] shadow-sm overflow-hidden">
+        <div className="bg-gradient-to-br from-[#1E1B4B] via-[#7C3AED] to-[#DB2777] p-5 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-40 h-40 bg-[#F59E0B]/20 rounded-full blur-3xl pointer-events-none" />
+          <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-white/15 backdrop-blur border border-white/25 flex items-center justify-center shrink-0">
+                <Trophy className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="text-base sm:text-lg font-extrabold text-white tracking-tight">Social Tasks & Rewards</h3>
+                <p className="text-sm text-purple-100">Complete simple social actions, earn <b className="text-amber-300">XENA</b> per task</p>
+              </div>
+            </div>
+            <button
+              onClick={() => onNavigateTab('tasks')}
+              className="px-4 py-2 rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer backdrop-blur shrink-0"
+            >
+              <span>View Tasks</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+        <div className="p-4 bg-[#F8F7FC] border-t border-[#EDE9FE] flex items-center justify-between">
+          <p className="text-[11px] text-[#6B7280]">7 platforms · Twitter, Telegram, YouTube, Instagram, Discord, TikTok, LinkedIn</p>
+          <span className="px-2 py-0.5 rounded-full bg-purple-50 text-[#6D28D9] text-[9px] font-bold border border-purple-100">1 submission per task</span>
+        </div>
+      </div>
 
       {/* 5. Announcement Highlight */}
       <AnnouncementCard onExploreP2P={() => onNavigateTab('p2p')} />

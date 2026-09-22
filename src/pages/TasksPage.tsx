@@ -94,7 +94,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ user, balances, xenaUsdPri
     setError(null);
     const res = await submitTask(modalTask.id, socialHandle.trim());
     if (res.ok) {
-      setSuccess('Submitted for admin review! You will receive 30 XENA once approved.');
+      setSuccess('Submitted for admin review! You will receive XENA once approved.');
       setModalTask(null);
       loadData();
     } else {
@@ -102,8 +102,6 @@ export const TasksPage: React.FC<TasksPageProps> = ({ user, balances, xenaUsdPri
     }
     setSubmitting(null);
   };
-
-  const rewardUsd = (30 * xenaUsdPrice).toFixed(4);
 
   return (
     <div className="space-y-4 animate-fade-in" id="tasks-page-view">
@@ -117,7 +115,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ user, balances, xenaUsdPri
             </div>
             <div>
               <h1 className="text-xl font-extrabold text-white tracking-tight">Social Tasks</h1>
-              <p className="text-sm text-purple-100">Complete social actions, earn <span className="font-bold text-yellow-300">30 XENA</span> per task</p>
+              <p className="text-sm text-purple-100">Complete social actions, earn <span className="font-bold text-yellow-300">XENA</span> per task</p>
             </div>
           </div>
           <div className="flex items-center gap-3 text-right">
@@ -166,20 +164,10 @@ export const TasksPage: React.FC<TasksPageProps> = ({ user, balances, xenaUsdPri
                       <p className="text-[11px] text-[#6B7280]">{PLATFORM_LABELS[task.platform] || task.platform}</p>
                     </div>
                   </div>
-                  {isCompleted ? (
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-full">
-                      <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
-                      <span className="text-[10px] font-bold text-emerald-700">Completed</span>
-                    </div>
-                  ) : isPending ? (
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-full">
-                      <Clock className="w-3.5 h-3.5 text-amber-600 animate-spin" />
-                      <span className="text-[10px] font-bold text-amber-700">Pending Review</span>
-                    </div>
-                  ) : (
+                  {!isCompleted && !isPending && (
                     <div className="flex items-center gap-1 px-2.5 py-1 bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white rounded-full text-[10px] font-bold">
-                      <span>+30 XENA</span>
-                      <span className="px-1.5 py-0.5 bg-white/20 rounded-full text-[9px]">≈ ${rewardUsd}</span>
+                      <span>+{task.rewardXena} XENA</span>
+                      <span className="px-1.5 py-0.5 bg-white/20 rounded-full text-[9px]">≈ ${(task.rewardXena * xenaUsdPrice).toFixed(4)}</span>
                     </div>
                   )}
                 </div>
@@ -240,7 +228,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ user, balances, xenaUsdPri
                     {sub.status === 'approved' && (
                       <>
                         <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-200 flex items-center gap-1">
-                          <UserCheck className="w-3 h-3" /> +30 XENA
+                          <UserCheck className="w-3 h-3" /> +{sub.taskReward || 30} XENA
                         </span>
                       </>
                     )}
@@ -284,7 +272,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ user, balances, xenaUsdPri
             <p className="text-sm text-[#6B7280]">{modalTask.description}</p>
 
             <div className="p-3 bg-[#F8F7FC] rounded-xl border border-[#EDE9FE] space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-[#6B7280]">Reward</span><span className="font-bold text-[#6D28D9]">30 XENA ≈ ${rewardUsd}</span></div>
+              <div className="flex justify-between"><span className="text-[#6B7280]">Reward</span><span className="font-bold text-[#6D28D9]">{modalTask.rewardXena} XENA ≈ ${(modalTask.rewardXena * xenaUsdPrice).toFixed(4)}</span></div>
               <div className="flex justify-between"><span className="text-[#6B7280]">Platform</span><span className="font-bold">{PLATFORM_LABELS[modalTask.platform]}</span></div>
             </div>
 

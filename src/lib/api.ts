@@ -711,3 +711,29 @@ export async function adminDeleteTask(taskId: string): Promise<{ ok: boolean; er
     return { ok: false, error: describeAuthError(e) };
   }
 }
+
+export async function adminAddTask(payload: {
+  title: string;
+  platform: string;
+  url: string;
+  description?: string;
+  rewardXena?: number;
+  maxCompletions?: number | null;
+  status?: string;
+}): Promise<{ ok: boolean; error?: string; id?: string }> {
+  try {
+    const res = await callRpc<any>('admin_add_task', { payload });
+    return { ok: res?.ok ?? false, error: res?.error, id: res?.id };
+  } catch (e: any) {
+    return { ok: false, error: describeAuthError(e) };
+  }
+}
+
+export async function adminGetAllTasks(): Promise<{ ok: boolean; error?: string; tasks?: SocialTask[] }> {
+  try {
+    const res = await callRpc<any>('admin_get_tasks');
+    return { ok: res?.ok ?? false, error: res?.error, tasks: res?.tasks };
+  } catch (e: any) {
+    return { ok: false, error: describeAuthError(e) };
+  }
+}

@@ -1822,6 +1822,43 @@ begin
   return jsonb_build_object('ok', true, 'deleted', p_task_id);
 end $$;
 
+-- Admin adds a new task to catalog
+create or replace function public.admin_add_task(payload jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  new_id text;
+  max_sort int;
+begin
+  if not public.is_admin() then return jsonb_build_object('ok', false, 'error', 'Admin access required'); end if;
+  new_id := coalesce(payload->>'id', 'task-' || substr(gen_random_uuid()::text, 1, 8));
+  select coalesce(max(sort_order), 0) + 1 into max_sort from public.social_tasks;
+  insert into public.social_tasks (id, title, platform, url, description, reward_xena, max_completions, status, sort_order)
+  values (
+    new_id,
+    payload->>'title',
+    payload->>'platform',
+    payload->>'url',
+    coalesce(payload->>'description', ''),
+    coalesce((payload->>'rewardXena')::numeric, 30),
+    coalesce((payload->>'maxCompletions')::int, null),
+    coalesce(payload->>'status', 'active'),
+    max_sort
+  );
+  return jsonb_build_object('ok', true, 'id', new_id);
+end $$;
+
+-- Admin gets all tasks (including inactive) for management
+create or replace function public.admin_get_tasks()
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_tasks jsonb;
+begin
+  if not public.is_admin() then return jsonb_build_object('ok', false, 'error', 'Admin access required'); end if;
+  select jsonb_agg(to_jsonb(t) order by t.sort_order asc) into v_tasks
+  from public.social_tasks t;
+  return jsonb_build_object('ok', true, 'tasks', coalesce(v_tasks, '[]'::jsonb));
+end $$;
+
 --
 -- GRANTS
 --
@@ -1890,6 +1927,8 @@ grant execute on function public.submit_task to authenticated;
 grant execute on function public.admin_review_task to authenticated;
 grant execute on function public.admin_get_task_submissions to authenticated;
 grant execute on function public.admin_delete_task to authenticated;
+grant execute on function public.admin_add_task to authenticated;
+grant execute on function public.admin_get_tasks to authenticated;
 grant execute on function public.get_social_tasks to anon, authenticated;
 grant execute on function public.get_my_task_submissions to authenticated;
 

@@ -54,7 +54,7 @@ import {
   Music,
   Linkedin,
 } from 'lucide-react';
-import { getSupportConversations, replySupportConversation, resolveSupportConversation, replaceAnnouncements, replacePromos, updateAdminSettings, adminGetDeposits, adminDecideDeposit, adminGetTaskSubmissions, adminReviewTask } from '../lib/api';
+import { getSupportConversations, replySupportConversation, resolveSupportConversation, replaceAnnouncements, replacePromos, updateAdminSettings, adminGetDeposits, adminDecideDeposit, adminGetTaskSubmissions, adminReviewTask, adminAddTask, adminGetAllTasks, adminDeleteTask } from '../lib/api';
 import type { SupportConversation } from '../types';
 
 interface Props {
@@ -112,6 +112,10 @@ interface Props {
   onDeleteVault?: (vaultId: string) => Promise<{ ok: boolean; error?: string }>;
   limits?: { min_deposit_ngn?: number; min_withdrawal_ngn?: number };
   onUpdateLimits?: (minDeposit: number, minWithdrawal: number) => Promise<{ ok: boolean; error?: string }>;
+  // Task management
+  adminAddTask?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; id?: string }>;
+  adminGetAllTasks?: () => Promise<{ ok: boolean; error?: string; tasks?: any[] }>;
+  adminDeleteTask?: (taskId: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 export const SEED_USERS = [
@@ -1145,6 +1149,9 @@ export const AdminPanel: React.FC<Props> = ({
             <TasksSection
               adminGetTaskSubmissions={adminGetTaskSubmissions}
               adminReviewTask={adminReviewTask}
+              adminAddTask={adminAddTask}
+              adminGetAllTasks={adminGetAllTasks}
+              adminDeleteTask={adminDeleteTask}
             />
           )}
 
@@ -1787,13 +1794,36 @@ export const AdminPanel: React.FC<Props> = ({
 const TasksSection: React.FC<{
   adminGetTaskSubmissions: () => Promise<{ ok: boolean; error?: string; submissions?: any[] }>;
   adminReviewTask: (id: string, approve: boolean, note?: string) => Promise<{ ok: boolean; error?: string; rewarded?: number }>;
-}> = ({ adminGetTaskSubmissions, adminReviewTask }) => {
+  adminAddTask: (payload: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; id?: string }>;
+  adminGetAllTasks: () => Promise<{ ok: boolean; error?: string; tasks?: any[] }>;
+  adminDeleteTask: (taskId: string) => Promise<{ ok: boolean; error?: string }>;
+}> = ({
+  adminGetTaskSubmissions,
+  adminReviewTask,
+  adminAddTask,
+  adminGetAllTasks,
+  adminDeleteTask,
+}) => {
   const [submissions, setSubmissions] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tasksLoading, setTasksLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [newTask, setNewTask] = useState({
+    title: '',
+    platform: 'twitter',
+    url: '',
+    description: '',
+    rewardXena: 30,
+    maxCompletions: '',
+    status: 'active',
+  });
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     loadSubmissions();
+    loadTasks();
   }, []);
 
   const loadSubmissions = async () => {
@@ -1808,6 +1838,18 @@ const TasksSection: React.FC<{
     }
   };
 
+  const loadTasks = async () => {
+    setTasksLoading(true);
+    try {
+      const res = await adminGetAllTasks();
+      if (res.ok && res.tasks) setTasks(res.tasks);
+    } catch (e) {
+      console.error('Failed to load tasks:', e);
+    } finally {
+      setTasksLoading(false);
+    }
+  };
+
   const handleReview = async (id: string, approve: boolean) => {
     const note = approve ? 'Approved by admin' : 'Rejected by admin';
     const res = await adminReviewTask(id, approve, note);
@@ -1815,6 +1857,39 @@ const TasksSection: React.FC<{
       setSubmissions(prev => prev.map(s => s.id === id ? { ...s, status: approve ? 'approved' : 'rejected', admin_note: note, reviewed_at: new Date().toISOString() } : s));
     } else {
       alert(res.error || 'Failed to review submission');
+    }
+  };
+
+  const handleAddTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdding(true);
+    const payload = {
+      title: newTask.title,
+      platform: newTask.platform,
+      url: newTask.url,
+      description: newTask.description,
+      rewardXena: newTask.rewardXena,
+      maxCompletions: newTask.maxCompletions ? parseInt(newTask.maxCompletions) : null,
+      status: newTask.status,
+    };
+    const res = await adminAddTask(payload);
+    if (res.ok) {
+      setShowAddTask(false);
+      setNewTask({ title: '', platform: 'twitter', url: '', description: '', rewardXena: 30, maxCompletions: '', status: 'active' });
+      loadTasks();
+    } else {
+      alert(res.error || 'Failed to add task');
+    }
+    setAdding(false);
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!confirm('Delete this task? This cannot be undone.')) return;
+    const res = await adminDeleteTask(taskId);
+    if (res.ok) {
+      loadTasks();
+    } else {
+      alert(res.error || 'Failed to delete task');
     }
   };
 
@@ -1840,7 +1915,7 @@ const TasksSection: React.FC<{
     custom: 'LinkedIn',
   };
 
-  const PlatformIcon = (platform: string) => {
+  const PlatformIcon = ({ platform }: { platform: string }) => {
     switch (platform) {
       case 'twitter': return <Twitter className="w-4 h-4 text-white" />;
       case 'telegram': return <MessageCircle className="w-4 h-4 text-white" />;
@@ -1855,41 +1930,122 @@ const TasksSection: React.FC<{
 
   return (
     <div className="space-y-4">
+      {/* Header with Add Task button */}
       <div className="bg-gradient-to-br from-[#1E1B4B] via-[#7C3AED] to-[#DB2777] rounded-2xl p-4 text-white relative overflow-hidden">
         <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none" />
         <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h3 className="text-sm font-extrabold flex items-center gap-2"><Trophy className="w-4 h-4" /> Tasks & Rewards</h3>
-            <p className="text-[10px] text-purple-100 mt-0.5">Review social task submissions. Each approved task rewards <b className="text-amber-300">30 XENA</b>.</p>
+            <p className="text-[10px] text-purple-100 mt-0.5">Manage task catalog & review submissions. Approved tasks reward <b className="text-amber-300">XENA</b>.</p>
           </div>
-          <div className="flex gap-2">
-            {['all', 'pending', 'approved', 'rejected'].map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f as any)}
-                className={`px-2.5 py-1.5 text-[10px] font-bold rounded-lg transition-all ${
-                  filter === f ? 'bg-white text-[#6D28D9] shadow-xs' : 'text-purple-100 hover:bg-white/10'
-                }`}
-              >
-                {f.charAt(0).toUpperCase() + f.slice(1)} {filtered.filter(s => s.status === f).length && filter !== 'all' && <span className="ml-1 bg-white/20 px-1.5 py-0.5 rounded-full">{filtered.filter(s => s.status === f).length}</span>}
-              </button>
-            ))}
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <button
+              onClick={() => setShowAddTask(true)}
+              className="px-3 py-1.5 bg-white/15 hover:bg-white/25 border border-white/25 text-white text-[10px] font-bold flex items-center gap-1.5 rounded-lg transition-colors cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add Task
+            </button>
+            <div className="flex gap-1.5">
+              {['all', 'pending', 'approved', 'rejected'].map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f as any)}
+                  className={`px-2.5 py-1.5 text-[10px] font-bold rounded-lg transition-all ${
+                    filter === f ? 'bg-white text-[#6D28D9] shadow-xs' : 'text-purple-100 hover:bg-white/10'
+                  }`}
+                >
+                  {f.charAt(0).toUpperCase() + f.slice(1)} {filtered.filter(s => s.status === f).length && filter !== 'all' && <span className="ml-1 bg-white/20 px-1.5 py-0.5 rounded-full">{filtered.filter(s => s.status === f).length}</span>}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
-      {loading ? (
-        <div className="bg-white border border-[#EDE9FE] rounded-2xl p-8 text-center">
-          <div className="w-8 h-8 border-2 border-[#7C3AED] border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-[#6B7280] mt-3 text-sm">Loading submissions...</p>
+      {/* Task Catalog Management */}
+      <div className="bg-white border border-[#EDE9FE] rounded-2xl shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-[#EDE9FE] bg-[#F8F7FC]">
+          <h4 className="text-sm font-bold text-[#171717] flex items-center gap-2"><Trophy className="w-4 h-4 text-[#6D28D9]" /> Task Catalog</h4>
         </div>
-      ) : filtered.length === 0 ? (
-        <div className="bg-white border border-[#EDE9FE] rounded-2xl p-8 text-center">
-          <Trophy className="w-12 h-12 text-[#EDE9FE] mx-auto" />
-          <p className="text-[#6B7280] mt-3">{filter === 'all' ? 'No task submissions yet' : `No ${filter} submissions`}</p>
+        {tasksLoading ? (
+          <div className="p-8 text-center">
+            <div className="w-8 h-8 border-2 border-[#7C3AED] border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-[#6B7280] mt-3 text-sm">Loading tasks...</p>
+          </div>
+        ) : tasks.length === 0 ? (
+          <div className="p-8 text-center">
+            <Trophy className="w-12 h-12 text-[#EDE9FE] mx-auto" />
+            <p className="text-[#6B7280] mt-3">No tasks created yet. Click "Add Task" to create one.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs min-w-[800px]">
+              <thead>
+                <tr className="text-[10px] text-[#9CA3AF] uppercase tracking-wide font-bold border-b border-[#EDE9FE] bg-[#F8F7FC]">
+                  <th className="py-2.5 px-3">ID</th>
+                  <th className="py-2.5 px-3">Title</th>
+                  <th className="py-2.5 px-3">Platform</th>
+                  <th className="py-2.5 px-3">Reward</th>
+                  <th className="py-2.5 px-3">Status</th>
+                  <th className="py-2.5 px-3">Completions</th>
+                  <th className="py-2.5 px-3 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#EDE9FE]">
+                {tasks.map((t) => (
+                  <tr key={t.id} className="hover:bg-[#F8F7FC]">
+                    <td className="py-2.5 px-3 font-mono text-[10px] text-[#6D28D9] bg-purple-50 px-2 py-0.5 rounded border border-purple-100">{t.id}</td>
+                    <td className="py-2.5 px-3 font-medium text-[#171717] truncate max-w-[200px]">{t.title}</td>
+                    <td className="py-2.5 px-3">
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${platformColors[t.platform] || 'bg-purple-500'} text-white`}>
+                        <PlatformIcon platform={t.platform} />
+                        {platformLabels[t.platform] || t.platform}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 font-bold text-[#6D28D9] font-mono">{t.reward_xena} XENA</td>
+                    <td className="py-2.5 px-3">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        t.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                        t.status === 'paused' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                        'bg-slate-100 text-slate-600 border-slate-200'
+                      } border`}>
+                        {t.status.charAt(0).toUpperCase() + t.status.slice(1)}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-[10px] text-[#6B7280]">
+                      {t.current_completions || 0} / {t.max_completions ? t.max_completions : '∞'}
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <button
+                        onClick={() => handleDeleteTask(t.id)}
+                        className="px-2 py-1 bg-red-50 text-red-600 text-[10px] font-bold rounded-lg hover:bg-red-100 transition-colors flex items-center justify-center gap-1 mx-auto"
+                        title="Delete Task"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Submissions Review */}
+        <div className="p-4 border-t border-[#EDE9FE] bg-[#F8F7FC]">
+          <h4 className="text-sm font-bold text-[#171717] flex items-center gap-2"><ClipboardList className="w-4 h-4 text-[#6D28D9]" /> Submissions Review</h4>
         </div>
-      ) : (
-        <div className="bg-white border border-[#EDE9FE] rounded-2xl shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center">
+            <div className="w-8 h-8 border-2 border-[#7C3AED] border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-[#6B7280] mt-3 text-sm">Loading submissions...</p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="p-8 text-center">
+            <ClipboardList className="w-12 h-12 text-[#EDE9FE] mx-auto" />
+            <p className="text-[#6B7280] mt-3">{filter === 'all' ? 'No task submissions yet' : `No ${filter} submissions`}</p>
+          </div>
+        ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs min-w-[720px]">
               <thead>
@@ -1954,6 +2110,131 @@ const TasksSection: React.FC<{
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      {/* Add Task Modal */}
+      {showAddTask && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-[20px] max-w-lg w-full p-6 space-y-4 shadow-2xl border border-[#EDE9FE] animate-scale-up">
+            <div className="flex items-center justify-between pb-3 border-b border-[#EDE9FE]">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#7C3AED] to-[#DB2777] flex items-center justify-center shrink-0">
+                  <Plus className="w-5 h-5 text-white" />
+                </div>
+                <h3 className="text-xl font-extrabold text-[#171717]">Create New Task</h3>
+              </div>
+              <button onClick={() => setShowAddTask(false)} className="w-7 h-7 rounded-full bg-[#F8F7FC] hover:bg-[#EDE9FE] text-[#6B7280] flex items-center justify-center cursor-pointer font-bold">✕</button>
+            </div>
+
+            <form onSubmit={handleAddTask} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-[#171717] mb-1">Task Title</label>
+                <input
+                  type="text"
+                  value={newTask.title}
+                  onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                  placeholder="e.g., Follow @XenaNetwork on Twitter"
+                  className="w-full px-3.5 py-2.5 text-sm font-semibold text-[#171717] bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/20 focus:border-[#7C3AED] placeholder:text-[#9CA3AF]"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#171717] mb-1">Platform</label>
+                <select
+                  value={newTask.platform}
+                  onChange={(e) => setNewTask({ ...newTask, platform: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm font-semibold text-[#171717] bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/20 focus:border-[#7C3AED]"
+                >
+                  <option value="twitter">Twitter (X)</option>
+                  <option value="telegram">Telegram</option>
+                  <option value="youtube">YouTube</option>
+                  <option value="instagram">Instagram</option>
+                  <option value="discord">Discord</option>
+                  <option value="tiktok">TikTok</option>
+                  <option value="custom">LinkedIn (Custom)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#171717] mb-1">URL</label>
+                <input
+                  type="url"
+                  value={newTask.url}
+                  onChange={(e) => setNewTask({ ...newTask, url: e.target.value })}
+                  placeholder="https://twitter.com/XenaNetwork"
+                  className="w-full px-3.5 py-2.5 text-sm font-semibold text-[#171717] bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/20 focus:border-[#7C3AED] placeholder:text-[#9CA3AF]"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#171717] mb-1">Description</label>
+                <textarea
+                  value={newTask.description}
+                  onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
+                  placeholder="What should the user do?"
+                  rows={3}
+                  className="w-full px-3.5 py-2.5 text-sm font-semibold text-[#171717] bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/20 focus:border-[#7C3AED] placeholder:text-[#9CA3AF] resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-[#171717] mb-1">Reward (XENA)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={newTask.rewardXena}
+                    onChange={(e) => setNewTask({ ...newTask, rewardXena: parseInt(e.target.value) || 30 })}
+                    className="w-full px-3.5 py-2.5 text-sm font-semibold text-[#171717] bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/20 focus:border-[#7C3AED]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#171717] mb-1">Max Completions (optional)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={newTask.maxCompletions}
+                    onChange={(e) => setNewTask({ ...newTask, maxCompletions: e.target.value })}
+                    placeholder="Unlimited"
+                    className="w-full px-3.5 py-2.5 text-sm font-semibold text-[#171717] bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/20 focus:border-[#7C3AED] placeholder:text-[#9CA3AF]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#171717] mb-1">Status</label>
+                <select
+                  value={newTask.status}
+                  onChange={(e) => setNewTask({ ...newTask, status: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm font-semibold text-[#171717] bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/20 focus:border-[#7C3AED]"
+                >
+                  <option value="active">Active</option>
+                  <option value="paused">Paused</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddTask(false)}
+                  className="flex-1 py-2.5 rounded-lg text-xs font-bold border border-[#EDE9FE] text-[#6B7280] hover:bg-[#F8F7FC] transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={adding}
+                  className="flex-1 py-2.5 rounded-lg text-xs font-bold bg-gradient-to-r from-[#7C3AED] to-[#DB2777] text-white shadow-md hover:shadow-lg transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                >
+                  {adding ? <><Loader2 className="w-4 h-4 animate-spin mx-auto" /></> : 'Create Task'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Bell, User, Menu, X, ChevronDown, Shield, ArrowUpRight, Settings, Trophy } from 'lucide-react';
+import { Search, Bell, User, Menu, X, ChevronDown, Shield, ArrowUpRight, Settings } from 'lucide-react';
 import { XenaLogo } from './XenaLogo';
 import { UserProfile, NotificationItem } from '../types';
 
@@ -37,7 +37,6 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'investments', label: 'Earn' },
     { id: 'p2p', label: 'P2P' },
     { id: 'wallet', label: 'Wallet' },
-    { id: 'tasks', label: 'Tasks', icon: Trophy },
     { id: 'profile', label: 'Profile' },
     { id: 'transactions', label: 'Activity' },
     { id: 'announcements', label: 'News' },
