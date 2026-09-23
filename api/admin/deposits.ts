@@ -9,6 +9,13 @@ const toDisplayStatus = (status: string): string => {
   return status || 'Pending';
 };
 
+const getProviderLabel = (provider: string, currency: string): string => {
+  const p = String(provider || '').toLowerCase();
+  if (p === 'flutterwave') return `Flutterwave · ${currency}`;
+  if (p === 'nowpayments') return `NOWPayments · ${currency}`;
+  return provider || 'Unknown';
+};
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (!(await requireAdminToken(req))) return json(res, { ok: false, error: 'Admin only.' }, 403);
@@ -18,16 +25,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { data, error } = await sb
         .from('payments')
         .select('*')
-        .eq('provider', 'flutterwave')
         .order('created_at', { ascending: false });
       if (error) throw error;
       const deposits = (data || []).map((p: any) => ({
         id: p.id,
         user: p.email ? String(p.email).split('@')[0] : 'Unknown',
         email: p.email,
-        method: 'Flutterwave · NGN',
+        provider: p.provider,
+        method: getProviderLabel(p.provider, p.currency),
         amount: Number(p.amount || 0),
-        unit: p.currency || 'NGN',
+        unit: p.currency || 'USD',
         xena: Number(p.xena || 0),
         status: toDisplayStatus(p.status),
         reference: p.reference,
@@ -51,16 +58,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (decision === 'approved') {
         const email = String(deposit.email || '').toLowerCase();
         const xena = Number(deposit.xena || 0);
+        const amount = Number(deposit.amount || 0);
+        const currency = deposit.currency || 'USD';
+        const provider = deposit.provider || 'unknown';
+
+        const isNgn = provider === 'flutterwave' && currency === 'NGN';
+        const title = isNgn ? 'Naira Deposit (Flutterwave)' : 'Crypto Deposit (NOWPayments)';
+        const notifTitle = isNgn ? 'NGN Deposit Approved' : 'Crypto Deposit Approved';
+        const notifMsg = isNgn
+          ? `Your NGN deposit of ₦${amount.toLocaleString()} was approved. ${xena.toLocaleString()} XENA credited.`
+          : `Your ${currency} deposit of ${amount.toLocaleString()} was approved. ${xena.toLocaleString()} XENA credited.`;
 
         await creditUser(email, xena, {
-          title: 'Naira Deposit (Flutterwave)',
+          title,
           type: 'deposit',
-          paymentMethod: 'Flutterwave · NGN',
-          counterparty: 'Flutterwave',
+          paymentMethod: getProviderLabel(provider, currency),
+          counterparty: provider === 'flutterwave' ? 'Flutterwave' : 'NOWPayments',
           reference: deposit.reference,
-          amount: Number(deposit.amount || 0),
-          notifTitle: 'Deposit Approved',
-          notifMessage: `Your NGN deposit of ₦${Number(deposit.amount || 0).toLocaleString()} was approved. ${xena.toLocaleString()} XENA credited.`,
+          amount,
+          notifTitle,
+          notifMessage: notifMsg,
         });
 
         const { error: upErr } = await sb

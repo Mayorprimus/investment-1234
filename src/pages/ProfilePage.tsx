@@ -724,6 +724,22 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
           <ProfileSection title="Identity & KYC Level">
             <ProfileRow
               icon={ShieldCheck}
+              label="Account Status"
+              trailing={
+                <StatusChip
+                  tone={
+                    user.status === 'Frozen' ? 'red' :
+                    user.status === 'Banned' ? 'red' :
+                    user.status === 'Pending KYC' ? 'amber' : 'green'
+                  }
+                >
+                  {user.status}
+                </StatusChip>
+              }
+              chevron={false}
+            />
+            <ProfileRow
+              icon={ShieldCheck}
               label="Daily Withdrawal Limit"
               trailing={
                 <span className="font-mono text-xs font-bold text-[#171717]">

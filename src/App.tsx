@@ -33,7 +33,7 @@ import {
   SEED_DEPOSITS,
   SEED_REFERRALS,
 } from './pages/AdminPanel';
-import { getState, saveState, registerAccount, loginAccount, saveAccount, changeAccountPassword, getAuthToken, adjustUserBalance, submitP2POffer, approveP2POffer, rejectP2POffer, submitP2PPayment, approveP2PPayment, rejectP2PPayment, setXenaPrice, deleteUserAccount, stakeVault, claimYield, getMyState, moveP2POffer, updateLimits, adminRestartInvestment, adminCancelInvestment, adminPayoutInvestment, adminPayoutAllVaults, adminUpdateVault, adminAddVault, adminDeleteVault, adminDecideWithdrawal, redeemPromoCode, logout, adminGetTaskSubmissions, adminReviewTask, adminAddTask, adminGetAllTasks, adminDeleteTask } from './lib/api';
+import { getState, saveState, registerAccount, loginAccount, saveAccount, changeAccountPassword, getAuthToken, adjustUserBalance, submitP2POffer, approveP2POffer, rejectP2POffer, submitP2PPayment, approveP2PPayment, rejectP2PPayment, setXenaPrice, deleteUserAccount, stakeVault, claimYield, getMyState, moveP2POffer, updateLimits, adminRestartInvestment, adminCancelInvestment, adminPayoutInvestment, adminPayoutAllVaults, adminUpdateVault, adminAddVault, adminDeleteVault, adminDecideWithdrawal, redeemPromoCode, logout, adminGetTaskSubmissions, adminReviewTask, adminAddTask, adminGetAllTasks, adminDeleteTask, adminUpdateUserStatus } from './lib/api';
 import { sb, mapProfileToAccount } from './lib/supabase';
 
 // Layout Components
@@ -1165,6 +1165,7 @@ setBalances((prev) => ({
             adminAddTask={adminAddTask}
             adminGetAllTasks={adminGetAllTasks}
             adminDeleteTask={adminDeleteTask}
+            adminUpdateUserStatus={adminUpdateUserStatus}
           />
         );
 

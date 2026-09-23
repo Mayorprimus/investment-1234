@@ -116,6 +116,8 @@ interface Props {
   adminAddTask?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; id?: string }>;
   adminGetAllTasks?: () => Promise<{ ok: boolean; error?: string; tasks?: any[] }>;
   adminDeleteTask?: (taskId: string) => Promise<{ ok: boolean; error?: string }>;
+  // User status management
+  adminUpdateUserStatus?: (userId: string, status: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 export const SEED_USERS = [
@@ -740,18 +742,34 @@ export const AdminPanel: React.FC<Props> = ({
                                     className="px-2 py-1 rounded-lg bg-purple-50 text-[#6D28D9] text-[10px] font-bold border border-purple-100 cursor-pointer"><BadgeCheck className="w-3 h-3 inline mr-0.5" />KYC</button>
                                 )}
                                 <button
-                                  onClick={() => {
-                                    setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, status: frozen ? 'Active' : 'Frozen' } : x));
-                                    notify(`${u.name} ${frozen ? 'unfrozen' : 'frozen'}`);
+                                  onClick={async () => {
+                                    const newStatus = frozen ? 'Active' : 'Frozen';
+                                    if (adminUpdateUserStatus) {
+                                      const res = await adminUpdateUserStatus(u.id, newStatus);
+                                      if (res.ok) {
+                                        setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, status: newStatus } : x));
+                                        notify(`${u.name} ${newStatus === 'Frozen' ? 'frozen' : 'unfrozen'}`);
+                                      } else {
+                                        notify(res.error || 'Failed to update status');
+                                      }
+                                    }
                                   }}
                                   className={`px-2 py-1 rounded-lg text-[10px] font-bold border cursor-pointer ${frozen ? 'bg-emerald-50 text-[#16A34A] border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}
                                 >
                                   {frozen ? 'Unfreeze' : 'Freeze'}
                                 </button>
                                 <button
-                                  onClick={() => {
-                                    setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, status: banned ? 'Active' : 'Banned' } : x));
-                                    notify(`${u.name} ${banned ? 'unbanned' : 'banned'}`);
+                                  onClick={async () => {
+                                    const newStatus = banned ? 'Active' : 'Banned';
+                                    if (adminUpdateUserStatus) {
+                                      const res = await adminUpdateUserStatus(u.id, newStatus);
+                                      if (res.ok) {
+                                        setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, status: newStatus } : x));
+                                        notify(`${u.name} ${newStatus === 'Banned' ? 'banned' : 'unbanned'}`);
+                                      } else {
+                                        notify(res.error || 'Failed to update status');
+                                      }
+                                    }
                                   }}
                                   className={`px-2 py-1 rounded-lg text-[10px] font-bold border cursor-pointer items-center gap-1 ${banned ? 'bg-emerald-50 text-[#16A34A] border-emerald-100' : 'bg-slate-100 text-slate-700 border-slate-200'}`}
                                 >

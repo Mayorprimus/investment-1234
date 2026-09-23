@@ -627,6 +627,16 @@ export async function adminDecideDeposit(depositId: string, decision: 'approved'
   }
 }
 
+// --- Admin User Management ---
+export async function adminUpdateUserStatus(userId: string, status: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await callRpc<any>('admin_update_user_status', { p_user_id: userId, p_status: status });
+    return { ok: res?.ok ?? false, error: res?.error };
+  } catch (e: any) {
+    return { ok: false, error: describeAuthError(e) };
+  }
+}
+
 // --- Social Tasks API ---
 export interface SocialTask {
   id: string;
