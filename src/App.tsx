@@ -66,6 +66,8 @@ import { SecurityModal } from './components/modals/SecurityModal';
 import { SearchModal } from './components/SearchModal';
 import { NotificationsDrawer } from './components/NotificationsDrawer';
 import { WelcomeModal } from './components/modals/WelcomeModal';
+import { TasksWelcomeModal } from './components/modals/TasksWelcomeModal';
+import { InvestWelcomeModal } from './components/modals/InvestWelcomeModal';
 
 export default function App() {
   // App Global State
@@ -138,6 +140,8 @@ export default function App() {
   const [securityModalOpen, setSecurityModalOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const [tasksWelcomeOpen, setTasksWelcomeOpen] = useState(false);
+  const [investWelcomeOpen, setInvestWelcomeOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   // Boot: load public state, restore any existing Supabase session, then pull
@@ -203,6 +207,15 @@ export default function App() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Onboarding chain: Welcome → Tasks → Invest (runs once per user via localStorage)
+  useEffect(() => {
+    if (!authed) return;
+    const seen = localStorage.getItem('onboardingCompleted');
+    if (!seen) {
+      setWelcomeOpen(true);
+    }
+  }, [authed]);
 
   // Realtime: any public/admin table change re-syncs shared + my state so every
   // admin action (price, approval, payout, withdrawal decision…) lands live.
@@ -1314,12 +1327,35 @@ setBalances((prev) => ({
 
       <WelcomeModal
         isOpen={welcomeOpen}
-        onClose={() => setWelcomeOpen(false)}
+        onClose={() => {
+          setWelcomeOpen(false);
+          setTasksWelcomeOpen(true);
+        }}
         firstName={user.name.split(' ')[0] || 'onboard'}
         onDeposit={() => {
           setWelcomeOpen(false);
           setDepositWithdrawTab('deposit');
           setDepositWithdrawOpen(true);
+        }}
+      />
+      <TasksWelcomeModal
+        isOpen={tasksWelcomeOpen}
+        onClose={() => {
+          setTasksWelcomeOpen(false);
+          setInvestWelcomeOpen(true);
+        }}
+        onExploreTasks={() => {
+          handleNavSelect('tasks');
+        }}
+      />
+      <InvestWelcomeModal
+        isOpen={investWelcomeOpen}
+        onClose={() => {
+          setInvestWelcomeOpen(false);
+          localStorage.setItem('onboardingCompleted', 'true');
+        }}
+        onStartInvesting={() => {
+          handleNavSelect('investments');
         }}
       />
     </div>
