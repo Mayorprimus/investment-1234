@@ -123,23 +123,13 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
     }
   }, [withdrawCoin, savedWallets]);
 
-  // FX rate: 1 USD = 1330 NGN (used for NGN <-> USD conversion)
-  const FX_NGN_PER_USD = 1330;
-  const isNigeria = country?.toLowerCase() === 'nigeria';
+  // FX rate: 1 USD = 1330 NGN
   const minDepositNgn = limits?.min_deposit_ngn ?? 5000;
   const minWithdrawalNgn = limits?.min_withdrawal_ngn ?? 5000;
-  // Convert NGN limits to USD using FX rate (not XENA rate)
-  const minDepositUsd = Math.round(minDepositNgn / FX_NGN_PER_USD);
-  const minWithdrawalUsd = Math.round(minWithdrawalNgn / FX_NGN_PER_USD);
-
-  const minDeposit = isNigeria ? minDepositNgn : minDepositUsd;
-  const minWithdrawal = isNigeria ? minWithdrawalNgn : minWithdrawalUsd;
 
   // XENA rate for display/conversion: 1 XENA = xenaNgnRate NGN
   const xenaFromNgn = (n: number) => Math.round((n / xenaNgnRate) * 10000) / 10000;
   const fmtNgn = (n: number) => `₦${Math.round(n).toLocaleString('en-US')}`;
-  const fmtUsd = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
-  const fmtAmount = isNigeria ? fmtNgn : fmtUsd;
   const ngnFromXena = (x: number) => Math.round(x * xenaNgnRate);
 
   if (!isOpen) return null;
@@ -175,7 +165,7 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
     e.preventDefault();
     const ngn = parseFloat(ngnAmount);
     if (isNaN(ngn) || ngn <= 0) { setError('Enter a valid amount.'); return; }
-    if (ngn < minDeposit) { setError(`Minimum deposit is ${fmtAmount(minDeposit)}.`); return; }
+    if (ngn < minDepositNgn) { setError(`Minimum deposit is ${fmtNgn(minDepositNgn)}.`); return; }
 
     setIsSubmitting(true);
     setError(null);
@@ -277,7 +267,7 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
     const ngn = parseFloat(ngnAmount);
     const xena = xenaFromNgn(ngn);
     if (isNaN(ngn) || ngn <= 0) { setError('Enter a valid amount.'); return; }
-    if (ngn < minWithdrawal) { setError(`Minimum withdrawal is ${fmtNgn(minWithdrawal)}.`); return; }
+    if (ngn < minWithdrawalNgn) { setError(`Minimum withdrawal is ${fmtNgn(minWithdrawalNgn)}.`); return; }
     if (xena > availableXena) { setError(`Insufficient balance. You have ${availableXena.toFixed(2)} XENA.`); return; }
     if (!ngnAccountNumber || !ngnAccountName) { setError('Fill in your bank details.'); return; }
 
@@ -428,18 +418,18 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
                   </div>
 
                   <div>
-<label className="block text-xs font-semibold text-[#171717] mb-1.5">Amount ({isNigeria ? '₦ Naira' : '$ USD'})</label>
+<label className="block text-xs font-semibold text-[#171717] mb-1.5">Amount (₦ Naira)</label>
                     <div className="relative">
                       <Banknote className="w-4 h-4 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2" />
                       <input type="number" value={ngnAmount} onChange={(e) => setNgnAmount(e.target.value)}
-                        min={minDeposit} step="any" required
+                        min={minDepositNgn} step="any" required
                         className="w-full px-4 pl-9 py-2.5 text-base font-semibold text-[#171717] bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl focus:outline-none focus:border-[#7C3AED] focus:bg-white transition-all pr-16"
                         placeholder="0.00" />
-                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 font-bold text-xs text-[#6D28D9]">{isNigeria ? '₦' : '$'}</span>
+                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 font-bold text-xs text-[#6D28D9]">₦</span>
                     </div>
                     <div className="flex items-center justify-between text-xs mt-1.5">
-                      <span className="text-[#6B7280]">Min: {fmtAmount(minDeposit)}</span>
-                      <span className="font-semibold text-[#6D28D9]">1 XENA ≈ {isNigeria ? fmtNgn(rate) : fmtUsd(1 * xenaUsdPrice)}</span>
+                      <span className="text-[#6B7280]">Min: {fmtNgn(minDepositNgn)}</span>
+                      <span className="font-semibold text-[#6D28D9]">1 XENA ≈ {fmtNgn(rate)}</span>
                     </div>
                     <div className="flex items-center justify-between text-xs font-bold text-[#171717] bg-emerald-50 border border-emerald-100 rounded-lg p-2 mt-1.5">
                       <span>You receive</span>
@@ -453,9 +443,9 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
                     </div>
                   )}
 
-                  <button type="submit" disabled={isSubmitting || ngnDeposit < minDeposit}
+                  <button type="submit" disabled={isSubmitting || ngnDeposit < minDepositNgn}
                     className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-[#7C3AED] to-[#A855F7] hover:shadow-[0_4px_16px_rgba(109,40,217,0.3)] hover:scale-[1.01] transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                    {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Initializing...</> : <>Pay {fmtAmount(ngnDeposit)} via Flutterwave</>}
+                    {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Initializing...</> : <>Pay {fmtNgn(ngnDeposit)} via Flutterwave</>}
                   </button>
                 </form>
               )}
@@ -609,7 +599,7 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-[#6B7280] border-t border-purple-100 pt-1.5">
                   <span>Min withdrawal</span>
-                  <span className="font-bold text-[#171717]">{fmtNgn(minWithdrawal)} (≈ {xenaFromNgn(minWithdrawal).toFixed(2)} XENA)</span>
+                  <span className="font-bold text-[#171717]">{fmtNgn(minWithdrawalNgn)} (≈ {xenaFromNgn(minWithdrawalNgn).toFixed(2)} XENA)</span>
                 </div>
               </div>
 
@@ -665,7 +655,7 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
                       <div className="flex gap-1.5">
                         {[0.25, 0.5, 0.75, 1].map((pct) => (
                           <button key={pct} type="button"
-                            onClick={() => setNgnAmount(Math.max(minWithdrawal, Math.round(availableNgn * pct)).toString())}
+                            onClick={() => setNgnAmount(Math.max(minWithdrawalNgn, Math.round(availableNgn * pct)).toString())}
                             className="px-2 py-0.5 text-[10px] font-bold rounded bg-purple-50 text-[#7C3AED] hover:bg-purple-100 transition-colors">
                             {pct === 1 ? 'MAX' : `${pct * 100}%`}
                           </button>
@@ -675,7 +665,7 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
                     <div className="relative">
                       <Banknote className="w-4 h-4 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2" />
                       <input type="number" value={ngnAmount} onChange={(e) => setNgnAmount(e.target.value)}
-                        max={availableNgn} min={minWithdrawal} step="any" required
+                        max={availableNgn} min={minWithdrawalNgn} step="any" required
                         className="w-full px-4 pl-9 py-2.5 text-base font-semibold text-[#171717] bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl focus:outline-none focus:border-[#7C3AED] focus:bg-white transition-all pr-16"
                         placeholder="0.00" />
                       <span className="absolute right-3.5 top-1/2 -translate-y-1/2 font-bold text-xs text-[#6D28D9]">₦</span>
