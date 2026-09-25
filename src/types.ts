@@ -13,6 +13,8 @@ export interface UserProfile {
   name: string;
   email: string;
   country: string;
+  phone?: string;
+  dob?: string;
   kycTier: string;
   avatarUrl?: string;
   xenaId: string;

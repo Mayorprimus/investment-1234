@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   User,
   ShieldCheck,
@@ -51,7 +51,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { UserProfile, UserBalances } from '../types';
-import { getSupportConversations, sendSupportMessage, getAuthToken, getMyReferralStats } from '../lib/api';
+import { getSupportConversations, sendSupportMessage, getAuthToken, getMyReferralStats, saveAccount } from '../lib/api';
 import { XenaTokenBadge } from '../components/XenaLogo';
 
 interface ProfilePageProps {
@@ -261,7 +261,47 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   const [currentKycTier, setCurrentKycTier] = useState<'Tier 1' | 'Tier 2' | 'Tier 3 (Institutional)'>(
     user.kycTier === 'Tier 2' ? 'Tier 2' : 'Tier 1'
   );
-  const [kycUpgradePending, setKycUpgradePending] = useState(false);
+
+  // KYC form fields users actually fill in and submit.
+  const [kycFullName, setKycFullName] = useState(user.name);
+  const [kycDob, setKycDob] = useState(user.dob || '');
+  const [kycCountry, setKycCountry] = useState(user.country || 'Nigeria');
+  const [kycPhone, setKycPhone] = useState(user.phone || '');
+  const [kycAddress, setKycAddress] = useState('');
+  const [kycIdType, setKycIdType] = useState('National ID Card');
+  const [kycIdNumber, setKycIdNumber] = useState('');
+  const [kycDocName, setKycDocName] = useState('');
+  const [kycSourceFunds, setKycSourceFunds] = useState('Salary / Employment');
+  const [kycFormError, setKycFormError] = useState<string | null>(null);
+
+  // KYC verification lifecycle: idle -> processing (5 min) -> verified.
+  const KYC_PROCESS_SECONDS = 5 * 60;
+  const [kycVerification, setKycVerification] = useState<'idle' | 'processing' | 'verified'>('idle');
+  const [kycRemainingSec, setKycRemainingSec] = useState(KYC_PROCESS_SECONDS);
+  const kycTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => () => { if (kycTimerRef.current) clearInterval(kycTimerRef.current); }, []);
+
+  // When the countdown reaches 0 the verification auto-completes -> verified.
+  useEffect(() => {
+    if (kycVerification !== 'processing' || kycRemainingSec > 0) return;
+    if (kycTimerRef.current) { clearInterval(kycTimerRef.current); kycTimerRef.current = null; }
+    setKycVerification('verified');
+    setCurrentKycTier('Tier 3 (Institutional)');
+    saveAccount({ kycTier: 'Tier 3 (Institutional)', name: kycFullName.trim(), country: kycCountry.trim(), phone: kycPhone.trim(), dob: kycDob }).catch(() => {});
+    try {
+      confetti({
+        particleCount: 90,
+        spread: 80,
+        origin: { y: 0.5 },
+        colors: ['#7C3AED', '#10B981', '#3B82F6'],
+      });
+    } catch {}
+    setSavedNotice('Verification complete! Your Tier 3 (Institutional) tier is now active with unlimited withdrawal limits.');
+    setTimeout(() => setSavedNotice(null), 5000);
+  }, [kycRemainingSec, kycVerification]);
+
+  const kycRemainingText = `${Math.floor(kycRemainingSec / 60)}:${String(kycRemainingSec % 60).padStart(2, '0')}`;
   const [showKycUpgradeModal, setShowKycUpgradeModal] = useState(false);
 
   // Referral State — each user has his own unique code (from their DB profile).
@@ -544,23 +584,21 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
     }, 4000);
   };
 
-  const handleSimulateKycUpgrade = () => {
-    setKycUpgradePending(true);
-    setTimeout(() => {
-      setKycUpgradePending(false);
-      setCurrentKycTier('Tier 3 (Institutional)');
-      setShowKycUpgradeModal(false);
-      try {
-        confetti({
-          particleCount: 90,
-          spread: 80,
-          origin: { y: 0.5 },
-          colors: ['#7C3AED', '#10B981', '#3B82F6'],
-        });
-      } catch {}
-      setSavedNotice('Congratulations! Your Tier 3 Institutional Verification is now active with unlimited withdrawal limits.');
-      setTimeout(() => setSavedNotice(null), 4000);
-    }, 2000);
+  const handleSubmitKyc = (e: React.FormEvent) => {
+    e.preventDefault();
+    setKycFormError(null);
+    if (!kycFullName.trim() || !kycDob || !kycCountry.trim() || !kycPhone.trim() || !kycAddress.trim() || !kycIdNumber.trim()) {
+      setKycFormError('Please fill in every required field (marked *) before submitting.');
+      return;
+    }
+    // Persist the filled identity fields immediately; tier activates on completion.
+    saveAccount({ name: kycFullName.trim(), country: kycCountry.trim(), phone: kycPhone.trim(), dob: kycDob }).catch(() => {});
+    setKycVerification('processing');
+    setKycRemainingSec(KYC_PROCESS_SECONDS);
+    if (kycTimerRef.current) clearInterval(kycTimerRef.current);
+    kycTimerRef.current = setInterval(() => {
+      setKycRemainingSec((prev) => Math.max(0, prev - 1));
+    }, 1000);
   };
 
   const handleEmergencyLockdown = () => {
@@ -774,7 +812,11 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             <ProfileRow
               icon={CheckCircle2}
               label="Government ID Status"
-              trailing={<StatusChip tone="green">Approved</StatusChip>}
+              trailing={
+                kycVerification === 'processing' ? <StatusChip tone="amber">Reviewing ID…</StatusChip> :
+                currentKycTier === 'Tier 3 (Institutional)' ? <StatusChip tone="green">Approved</StatusChip> :
+                <StatusChip tone="amber">Pending</StatusChip>
+              }
               chevron={false}
             />
           </ProfileSection>
@@ -1226,9 +1268,17 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             label={`Current Tier · ${currentKycTier}`}
             hint="ID & Biometrics Verified · Unlock higher limits, OTC access & priority settlement"
             chevron={false}
-            indicator={<StatusChip tone="green">Verified</StatusChip>}
+            indicator={
+              kycVerification === 'processing' ? (
+                <StatusChip tone="amber">Verifying… {kycRemainingText}</StatusChip>
+              ) : currentKycTier === 'Tier 3 (Institutional)' ? (
+                <StatusChip tone="green">Verified</StatusChip>
+              ) : (
+                <StatusChip tone="amber">Pending</StatusChip>
+              )
+            }
           />
-          {currentKycTier !== 'Tier 3 (Institutional)' && (
+          {currentKycTier !== 'Tier 3 (Institutional)' && kycVerification !== 'processing' && (
             <button
               onClick={() => setShowKycUpgradeModal(true)}
               className="w-full flex items-center gap-3 px-4 py-3.5 rounded-[16px] bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white shadow-sm hover:shadow-md transition-all cursor-pointer"
@@ -1241,6 +1291,20 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 <span className="block text-[11px] opacity-80">Unlimited daily withdrawals & OTC concierge</span>
               </span>
               <ChevronRight className="w-4 h-4 opacity-80" />
+            </button>
+          )}
+          {kycVerification === 'processing' && (
+            <button
+              onClick={() => setShowKycUpgradeModal(true)}
+              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-[16px] bg-amber-50 border border-amber-200 text-amber-800 text-left"
+            >
+              <span className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              </span>
+              <span className="flex-1">
+                <span className="block text-[13px] font-extrabold">Documents under review… {kycRemainingText}</span>
+                <span className="block text-[11px] opacity-80">We'll verify automatically in about 5 minutes. Keep the tab open.</span>
+              </span>
             </button>
           )}
 
@@ -1258,7 +1322,11 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
           </ProfileSection>
 
           <ProfileSection title="Tier 3 (Institutional)">
-            <ProfileRow icon={FileText} label="Proof of Address & Source of Funds" chevron={false} indicator={currentKycTier === 'Tier 3 (Institutional)' ? <StatusChip tone="green">Done</StatusChip> : <StatusChip tone="amber">Pending</StatusChip>} />
+            <ProfileRow icon={FileText} label="Proof of Address & Source of Funds" chevron={false} indicator={
+              kycVerification === 'processing' ? <StatusChip tone="amber">Verifying… {kycRemainingText}</StatusChip> :
+              currentKycTier === 'Tier 3 (Institutional)' ? <StatusChip tone="green">Done</StatusChip> :
+              <StatusChip tone="amber">Pending</StatusChip>
+            } />
             <ProfileRow icon={DollarSign} label="Daily withdrawals" trailing={<span className="text-xs font-bold text-[#6D28D9]">Unlimited</span>} chevron={false} />
             <ProfileRow icon={Award} label="Dedicated OTC Institutional Concierge" chevron={false} indicator={<StatusChip tone="purple">Premium</StatusChip>} />
           </ProfileSection>
@@ -1606,14 +1674,16 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
         </div>
       )}
 
-      {/* KYC Tier Upgrade Simulation Modal */}
+      {/* KYC Tier Upgrade Modal (fill form -> processing 5 min -> verified) */}
       {showKycUpgradeModal && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white rounded-[24px] max-w-lg w-full p-6 space-y-4 shadow-2xl border border-[#EDE9FE] animate-scale-up">
+          <div className="bg-white rounded-[24px] max-w-lg w-full p-6 space-y-4 shadow-2xl border border-[#EDE9FE] animate-scale-up max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-[#EDE9FE]">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-[#6D28D9]" />
-                <h3 className="text-sm font-bold text-[#171717]">Upgrade to Tier 3 (Institutional)</h3>
+                <h3 className="text-sm font-bold text-[#171717]">
+                  {kycVerification === 'processing' ? 'Verifying Your Documents…' : kycVerification === 'verified' ? 'Tier 3 Active' : 'Upgrade to Tier 3 (Institutional)'}
+                </h3>
               </div>
               <button
                 onClick={() => setShowKycUpgradeModal(false)}
@@ -1623,38 +1693,189 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
               </button>
             </div>
 
-            <p className="text-xs text-[#6B7280]">
-              Institutional Tier provides unlimited 24h withdrawals, OTC block trading access, and personalized account management.
-            </p>
+            {kycVerification === 'processing' ? (
+              <div className="py-6 text-center space-y-4">
+                <div className="w-16 h-16 mx-auto rounded-full bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200">
+                  <RefreshCw className="w-8 h-8 animate-spin" />
+                </div>
+                <div>
+                  <h4 className="text-base font-extrabold text-[#171717]">Documents under review…</h4>
+                  <p className="text-xs text-[#6B7280] mt-1">
+                    Verification usually takes about 5 minutes. You'll be verified automatically — no action needed.
+                  </p>
+                </div>
+                <div className="max-w-xs mx-auto">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-[#6B7280] mb-1.5">
+                    <span>Estimated time remaining</span>
+                    <span className="font-mono text-[#6D28D9]">{kycRemainingText}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-[#F1EDF9] overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-[#7C3AED] to-[#A855F7] transition-all duration-1000"
+                      style={{ width: `${((KYC_PROCESS_SECONDS - kycRemainingSec) / KYC_PROCESS_SECONDS) * 100}%` }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-[#9CA3AF] mt-2">Keep this page open — closing it pauses the review.</p>
+                </div>
+              </div>
+            ) : kycVerification === 'verified' ? (
+              <div className="py-6 text-center space-y-3">
+                <div className="w-16 h-16 mx-auto rounded-full bg-emerald-50 text-[#16A34A] flex items-center justify-center border border-emerald-200">
+                  <CheckCircle2 className="w-8 h-8" />
+                </div>
+                <h4 className="text-base font-extrabold text-[#171717]">Identity Verified</h4>
+                <p className="text-xs text-[#6B7280] max-w-xs mx-auto">
+                  Congratulations! Your Tier 3 (Institutional) verification is now active with unlimited 24h withdrawals and OTC access.
+                </p>
+                <button
+                  onClick={() => setShowKycUpgradeModal(false)}
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white font-extrabold text-xs hover:opacity-95 transition-all shadow-xs cursor-pointer mt-2"
+                >
+                  Done
+                </button>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-[#6B7280]">
+                  Institutional Tier provides unlimited 24h withdrawals, OTC block trading access, and personalized account management. Complete the form below to begin verification.
+                </p>
 
-            <div className="space-y-2.5 p-3.5 bg-[#F8F7FC] rounded-2xl border border-[#EDE9FE] text-xs">
-              <div className="flex items-center justify-between">
-                <span>Proof of Residential Address:</span>
-                <span className="text-[#16A34A] font-bold flex items-center gap-1">
-                  <Check className="w-3.5 h-3.5" /> Ready for Upload
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>Source of Wealth Declaration:</span>
-                <span className="text-[#16A34A] font-bold flex items-center gap-1">
-                  <Check className="w-3.5 h-3.5" /> Auto-Verified
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>Corporate/Entity Registration (Optional):</span>
-                <span className="text-slate-500 font-semibold">Individual Track</span>
-              </div>
-            </div>
+                <form onSubmit={handleSubmitKyc} className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] font-bold text-[#171717] block mb-1">Full Legal Name *</label>
+                      <input
+                        type="text"
+                        value={kycFullName}
+                        onChange={(e) => setKycFullName(e.target.value)}
+                        placeholder="As shown on your ID"
+                        required
+                        className="w-full bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-3 py-2 text-xs font-semibold text-[#171717] focus:outline-none focus:ring-1 focus:ring-[#6D28D9]"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-[#171717] block mb-1">Date of Birth *</label>
+                      <input
+                        type="date"
+                        value={kycDob}
+                        onChange={(e) => setKycDob(e.target.value)}
+                        required
+                        className="w-full bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-3 py-2 text-xs font-semibold text-[#171717] focus:outline-none focus:ring-1 focus:ring-[#6D28D9]"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-[#171717] block mb-1">Country of Residence *</label>
+                      <select
+                        value={kycCountry}
+                        onChange={(e) => setKycCountry(e.target.value)}
+                        className="w-full bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-3 py-2 text-xs font-semibold text-[#171717] focus:outline-none focus:ring-1 focus:ring-[#6D28D9] cursor-pointer"
+                      >
+                        {['Nigeria', 'Ghana', 'Kenya', 'South Africa', 'United Kingdom', 'United States', 'United Arab Emirates', 'India', 'Other'].map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-[#171717] block mb-1">Phone Number *</label>
+                      <input
+                        type="tel"
+                        value={kycPhone}
+                        onChange={(e) => setKycPhone(e.target.value)}
+                        placeholder="+234 800 000 0000"
+                        required
+                        className="w-full bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-3 py-2 text-xs font-semibold text-[#171717] focus:outline-none focus:ring-1 focus:ring-[#6D28D9]"
+                      />
+                    </div>
+                  </div>
 
-            <div className="pt-2">
-              <button
-                onClick={handleSimulateKycUpgrade}
-                disabled={kycUpgradePending}
-                className="w-full py-3 rounded-xl bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white font-extrabold text-xs hover:opacity-95 transition-all shadow-xs cursor-pointer"
-              >
-                {kycUpgradePending ? 'Verifying Documents on Ledger...' : 'Submit & Activate Tier 3 Instantly'}
-              </button>
-            </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-[#171717] block mb-1">Residential Address *</label>
+                    <input
+                      type="text"
+                      value={kycAddress}
+                      onChange={(e) => setKycAddress(e.target.value)}
+                      placeholder="Street, city, state/province"
+                      required
+                      className="w-full bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-3 py-2 text-xs font-semibold text-[#171717] focus:outline-none focus:ring-1 focus:ring-[#6D28D9]"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] font-bold text-[#171717] block mb-1">Government ID Type *</label>
+                      <select
+                        value={kycIdType}
+                        onChange={(e) => setKycIdType(e.target.value)}
+                        className="w-full bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-3 py-2 text-xs font-semibold text-[#171717] focus:outline-none focus:ring-1 focus:ring-[#6D28D9] cursor-pointer"
+                      >
+                        {['National ID Card', 'International Passport', "Driver's License", "Voter's Card"].map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-[#171717] block mb-1">ID Number *</label>
+                      <input
+                        type="text"
+                        value={kycIdNumber}
+                        onChange={(e) => setKycIdNumber(e.target.value)}
+                        placeholder="e.g. A01234567"
+                        required
+                        className="w-full bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-3 py-2 text-xs font-semibold text-[#171717] focus:outline-none focus:ring-1 focus:ring-[#6D28D9]"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-[#171717] block mb-1">
+                      Proof of Address (utility bill / bank statement) *
+                    </label>
+                    <label className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-[#F8F7FC] border border-dashed border-[#D1C9E3] text-[#6D28D9] text-xs font-bold cursor-pointer hover:bg-purple-50 transition-colors">
+                      <FileText className="w-4 h-4" />
+                      {kycDocName ? <span className="truncate max-w-[70%]">{kycDocName}</span> : 'Tap to upload file'}
+                      <input
+                        type="file"
+                        accept=".pdf,.png,.jpg,.jpeg"
+                        className="hidden"
+                        onChange={(e) => setKycDocName(e.target.files?.[0]?.name || '')}
+                      />
+                    </label>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-[#171717] block mb-1">Source of Funds *</label>
+                    <select
+                      value={kycSourceFunds}
+                      onChange={(e) => setKycSourceFunds(e.target.value)}
+                      className="w-full bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-3 py-2 text-xs font-semibold text-[#171717] focus:outline-none focus:ring-1 focus:ring-[#6D28D9] cursor-pointer"
+                    >
+                      {['Salary / Employment', 'Business / Trade Income', 'Investment / Crypto Gains', 'Inheritance / Family', 'Other'].map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {kycFormError && (
+                    <div className="flex items-center gap-2 text-[11px] font-bold text-red-600 bg-red-50 border border-red-100 rounded-xl p-2.5">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>{kycFormError}</span>
+                    </div>
+                  )}
+
+                  <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800 flex items-start gap-2">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>After submitting, your documents will be under review for about 5 minutes before being marked Verified automatically.</span>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white font-extrabold text-xs hover:opacity-95 transition-all shadow-xs cursor-pointer"
+                  >
+                    Submit for Review & Activate Tier 3
+                  </button>
+                </form>
+              </>
+            )}
           </div>
         </div>
       )}
