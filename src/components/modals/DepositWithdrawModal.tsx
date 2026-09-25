@@ -91,6 +91,7 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
   const [invoice, setInvoice] = useState<any>(null);
   const [waitingPayment, setWaitingPayment] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
 
   // Prefill withdrawal destination from details saved in Settings.
   useEffect(() => {
@@ -151,6 +152,7 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
 
   const resetState = () => {
     setError(null);
+    setPendingMessage(null);
     setInvoice(null);
     setWaitingPayment(false);
     setSuccessMessage(null);
@@ -193,7 +195,7 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
     setIsSubmitting(false);
 
     if (res.pending) {
-      setError('Payment submitted — awaiting admin approval. Your XENA will be credited once approved.');
+      setPendingMessage('Payment received — processing. Your XENA will be credited once an admin approves your deposit (usually within a few minutes).');
       return;
     }
     if (!res.ok) {
@@ -473,6 +475,12 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
                   {error && (
                     <div className="flex items-center gap-2 text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-lg p-2.5">
                       <AlertCircle className="w-4 h-4 shrink-0" /><span>{error}</span>
+                    </div>
+                  )}
+
+                  {pendingMessage && (
+                    <div className="flex items-center gap-2 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                      <Clock className="w-4 h-4 shrink-0 animate-pulse" /><span>{pendingMessage}</span>
                     </div>
                   )}
 

@@ -519,7 +519,15 @@ export const AdminPanel: React.FC<Props> = ({
     (t) => t.subject.toLowerCase().includes(ticketQuery.toLowerCase()) || t.user.toLowerCase().includes(ticketQuery.toLowerCase())
   );
   const filteredDeposits = deposits.filter((d) => depositFilter === 'All' || d.status === depositFilter);
-  const totalDepositedUsd = deposits.filter((d) => d.status === 'Completed').reduce((sum, d) => sum + d.amount, 0);
+  const completedDeposits = deposits.filter((d) => d.status === 'Completed');
+  const totalDepositedNgn = completedDeposits.filter((d) => d.unit === 'NGN').reduce((sum, d) => sum + d.amount, 0);
+  const totalDepositedUsd = completedDeposits.filter((d) => d.unit !== 'NGN').reduce((sum, d) => sum + d.amount, 0);
+  const fmtDepositedTotal = (): string => {
+    const parts: string[] = [];
+    if (totalDepositedNgn > 0) parts.push(`₦${totalDepositedNgn.toLocaleString()}`);
+    if (totalDepositedUsd > 0) parts.push(`$${totalDepositedUsd.toLocaleString()}`);
+    return parts.length ? parts.join(' + ') : `$${totalDepositedUsd.toLocaleString()}`;
+  };
   const pendingDepositCount = deposits.filter((d) => d.status === 'Pending').length;
 
   const referredRegistrations = registeredUsers.filter((ru) => ru.referrer);
@@ -677,7 +685,7 @@ export const AdminPanel: React.FC<Props> = ({
                   <div className="flex items-center gap-3">
                     <span className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center"><Banknote className="w-4 h-4" /></span>
                     <div className="text-left">
-                      <span className="block text-xs font-bold text-[#171717]">${totalDepositedUsd.toLocaleString()} deposited</span>
+                      <span className="block text-xs font-bold text-[#171717]">{fmtDepositedTotal()} deposited</span>
                       <span className="block text-[10px] text-[#6B7280]">View the full deposit ledger — all money deposited</span>
                     </div>
                   </div>
@@ -967,10 +975,10 @@ export const AdminPanel: React.FC<Props> = ({
             <div className="space-y-4">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
-                  { label: 'Total Deposited', value: `$${totalDepositedUsd.toLocaleString()}`, icon: Banknote, tone: 'bg-emerald-50 text-emerald-600' },
+                  { label: 'Total Deposited', value: fmtDepositedTotal(), icon: Banknote, tone: 'bg-emerald-50 text-emerald-600' },
                   { label: 'Deposits (30d)', value: deposits.length, icon: ArrowDownRight, tone: 'bg-sky-50 text-sky-600' },
                   { label: 'Awaiting Approval', value: pendingDepositCount, icon: Timer, tone: 'bg-amber-50 text-amber-600' },
-                  { label: 'Avg Deposit', value: `$${deposits.length ? Math.round(totalDepositedUsd / deposits.length).toLocaleString() : 0}`, icon: TrendingUp, tone: 'bg-purple-50 text-[#7C3AED]' },
+                  { label: 'Avg Deposit', value: deposits.length ? (totalDepositedNgn > 0 ? `₦${Math.round(totalDepositedNgn / deposits.length).toLocaleString()}` : `$${Math.round(totalDepositedUsd / deposits.length).toLocaleString()}`) : 0, icon: TrendingUp, tone: 'bg-purple-50 text-[#7C3AED]' },
                 ].map((s) => (
                   <div key={s.label} className="bg-white border border-[#EDE9FE] rounded-2xl p-3.5 shadow-sm">
                     <span className={`w-8 h-8 rounded-lg ${s.tone} flex items-center justify-center`}><s.icon className="w-4 h-4" /></span>
@@ -1005,7 +1013,7 @@ export const AdminPanel: React.FC<Props> = ({
                       <tr className="text-[10px] text-[#9CA3AF] uppercase tracking-wide font-bold border-b border-[#EDE9FE]">
                         <th className="py-2 pr-3">User</th>
                         <th className="py-2 pr-3">Method</th>
-                        <th className="py-2 pr-3 text-right">Amount (USD)</th>
+                        <th className="py-2 pr-3 text-right">Amount</th>
                         <th className="py-2 pr-3 text-right">XENA</th>
                         <th className="py-2 pr-3">Status</th>
                         <th className="py-2">Actions</th>
@@ -1021,7 +1029,7 @@ export const AdminPanel: React.FC<Props> = ({
                               <span className="block text-[10px] text-[#6B7280]">{d.email}</span>
                             </td>
                             <td className="py-2.5 pr-3 text-[#6B7280]">{d.method}</td>
-                            <td className="py-2.5 pr-3 text-right font-mono font-bold text-[#171717]">${d.amount.toLocaleString()}</td>
+                            <td className="py-2.5 pr-3 text-right font-mono font-bold text-[#171717]">{d.unit === 'NGN' ? '₦' : '$'}{d.amount.toLocaleString()}</td>
                             <td className="py-2.5 pr-3 text-right font-mono text-[#6D28D9]">{d.xena.toLocaleString()}</td>
                             <td className="py-2.5 pr-3"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${d.status === 'Completed' ? 'bg-emerald-50 text-[#16A34A] border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>{d.status}</span></td>
                             <td className="py-2.5 text-right whitespace-nowrap">

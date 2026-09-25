@@ -53,7 +53,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           user: profile?.name || pay.email.split('@')[0],
           email: pay.email,
           method: `NOWPayments · ${String(pay.meta?.coin || '').toUpperCase() || 'Crypto'}`,
-          amount: Math.round(amountFiat / price),
+          amount: Math.round(amountFiat * 100) / 100,
           unit: 'USD',
           xena,
           status: 'Completed',

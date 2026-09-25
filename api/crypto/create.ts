@@ -57,7 +57,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const reference = String(invoice.payment_id || invoice.id);
-    savePendingPayment({
+    await savePendingPayment({
       id: `pp-${Date.now()}`,
       reference,
       provider: 'nowpayments',

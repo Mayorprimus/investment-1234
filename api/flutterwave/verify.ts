@@ -41,8 +41,8 @@ async function registerPendingDeposit(email: string, amountNgn: number): Promise
         user: profile?.name || email.split('@')[0],
         email,
         method: 'Flutterwave · NGN',
-        amount: Math.round(amountNgn / rate),
-        unit: 'USD',
+        amount: amountNgn,
+        unit: 'NGN',
         xena,
         status: 'Pending',
         time: 'Just now',
@@ -71,7 +71,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const pay = await findPendingPaymentByEmail('flutterwave', email);
 
     if (pay && (pay.status === 'confirmed' || pay.status === 'completed')) {
-      return json(res, { ok: true, xena: pay.xena || 0, duplicate: true });
+      // Only treat as an already-processed duplicate if it happened very recently
+      // (e.g. the user just paid and the webhook confirmed it). A stale completed
+      // payment from a previous deposit must NOT swallow a brand-new deposit.
+      const justNow = Date.now() - new Date(pay.created_at || 0).getTime() < 15 * 60 * 1000;
+      const matchesAmount = !(amountNgn > 0) || Math.abs(Number(pay.amount || 0) - amountNgn) < 1;
+      if (justNow && matchesAmount) {
+        return json(res, { ok: true, xena: pay.xena || 0, duplicate: true });
+      }
     }
 
     if (pay && pay.status === 'pending') {
