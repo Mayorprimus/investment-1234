@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireEnv, readRawBody, json, handleError, findPendingPayment, updatePendingPayment, creditUser, getSetting, calculateReferralReward, appendBlobDeposit, requireSupabase } from '../_lib/helpers.js';
+import { requireEnv, readRawBody, json, handleError, findPendingPayment, updatePendingPayment, creditUser, getSetting, calculateReferralReward, appendBlobDeposit, requireSupabase, creditPayment } from '../_lib/helpers.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -34,14 +34,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const xena = Math.round((amount / price) * 10000) / 10000;
 
     await updatePendingPayment(paymentId, { status: 'confirmed', xena });
-    await creditUser(pay.email, xena, {
-      title: 'Crypto Deposit (NOWPayments)',
-      type: 'deposit',
-      paymentMethod: `NOWPayments · ${String(pay.meta?.coin || '').toUpperCase() || 'Crypto'}`,
-      counterparty: 'NOWPayments',
-      notifTitle: 'Crypto Deposit Confirmed',
-      notifMessage: `Your ${String(pay.meta?.coin || '').toUpperCase()} payment was confirmed. ${xena.toLocaleString()} XENA has been credited to your balance.`,
-    });
+    
+    // Credit the depositor via credit_payment RPC (handles welcome bonus $10 for first crypto deposit)
+    await creditPayment(paymentId, 'nowpayments', amount, 'USD', xena, pay.email, pay.meta);
 
     // Referral bonus: credit referrer $0.38 worth of XENA
     try {

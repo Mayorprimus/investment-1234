@@ -1280,20 +1280,36 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
           </div>
 
           <ProfileSection title="Share & Earn">
-            <ProfileRow
-              icon={Share2}
-              label="Referral Link"
-              hint={referralLink}
-              chevron={false}
-              trailing={<button onClick={() => handleCopyText(referralLink, 'ref-link')} className="shrink-0 p-2 rounded-lg bg-[#F8F7FC] text-[#6D28D9] border border-[#EDE9FE] hover:bg-purple-50 cursor-pointer">{copiedAddressId === 'ref-link' ? <Check className="w-3.5 h-3.5 text-[#16A34A]" /> : <Copy className="w-3.5 h-3.5" />}</button>}
-            />
-            <ProfileRow
-              icon={BadgePercent}
-              label="Referral Code"
-              hint={referralCode}
-              chevron={false}
-              trailing={<button onClick={() => handleCopyText(referralCode, 'ref-code')} className="shrink-0 p-2 rounded-lg bg-[#F8F7FC] text-[#6D28D9] border border-[#EDE9FE] hover:bg-purple-50 cursor-pointer">{copiedAddressId === 'ref-code' ? <Check className="w-3.5 h-3.5 text-[#16A34A]" /> : <Copy className="w-3.5 h-3.5" />}</button>}
-            />
+            <div className="p-4 bg-white/50 rounded-xl border border-[#EDE9FE] space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-[#F8F7FC] rounded-xl border border-[#EDE9FE]">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#7C3AED] to-[#A855F7] text-white flex items-center justify-center shrink-0">
+                  <Share2 className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-[#6B7280] tracking-wide uppercase">Your Referral Link</p>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <span className="font-mono text-sm font-bold text-[#171717] truncate">{referralLink}</span>
+                    <button onClick={() => handleCopyText(referralLink, 'ref-link')} className="shrink-0 px-3 py-1.5 text-xs font-bold bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white rounded-lg hover:opacity-90 transition-all cursor-pointer">
+                      <Copy className="w-3.5 h-3.5 mr-1" /> Copy Link
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-[#F8F7FC] rounded-xl border border-[#EDE9FE]">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#7C3AED] to-[#A855F7] text-white flex items-center justify-center shrink-0">
+                  <BadgePercent className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-[#6B7280] tracking-wide uppercase">Your Referral Code</p>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <span className="font-mono text-sm font-bold text-[#171717] tracking-widest bg-amber-50 px-2 py-1 rounded-lg border border-amber-100">{referralCode}</span>
+                    <button onClick={() => handleCopyText(referralCode, 'ref-code')} className="shrink-0 px-3 py-1.5 text-xs font-bold bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white rounded-lg hover:opacity-90 transition-all cursor-pointer">
+                      <Copy className="w-3.5 h-3.5 mr-1" /> Copy Code
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </ProfileSection>
 
           <ProfileSection title="Commission Stats">

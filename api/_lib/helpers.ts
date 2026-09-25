@@ -196,6 +196,22 @@ export async function creditUser(email: string, xenaAmount: number, txData: any)
   return true;
 }
 
+// Call the credit_payment RPC (handles welcome bonuses: ₦1,500 NGN / $10 crypto for first deposits)
+export async function creditPayment(reference: string, provider: string, amount: number, currency: string, xena: number, email: string, meta: any = {}): Promise<{ ok: boolean; error?: string; xena?: number; bonus?: number }> {
+  const sb = requireSupabase();
+  const { data, error } = await sb.rpc('credit_payment', {
+    p_reference: reference,
+    p_provider: provider,
+    p_amount: amount,
+    p_currency: currency,
+    p_xena: xena,
+    p_email: email,
+    p_meta: meta,
+  });
+  if (error) throw error;
+  return data || { ok: false, error: 'No response from credit_payment' };
+}
+
 // ---- Admin dashboard blob (admin_state.deposits) helpers ----
 // The admin portal draws its Deposit Ledger from admin_state.blob.deposits,
 // so keep online payments mirrored there (id = payments.id).

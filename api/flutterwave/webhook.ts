@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { readRawBody, getSetting, findPendingPayment, findPendingPaymentByEmail, updatePendingPayment, requireSupabase, savePendingPayment, appendBlobDeposit, creditUser, calculateReferralReward, updateBlobDeposit } from '../_lib/helpers.js';
+import { readRawBody, getSetting, findPendingPayment, findPendingPaymentByEmail, updatePendingPayment, requireSupabase, savePendingPayment, appendBlobDeposit, creditUser, calculateReferralReward, updateBlobDeposit, creditPayment } from '../_lib/helpers.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -110,18 +110,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (payCheck && payCheck.status !== 'completed' && payCheck.status !== 'confirmed') {
         await updatePendingPayment(reference, { status: 'completed', xena, amount: amountNgn, email });
         
-        // Credit the depositor
-        await creditUser(email, xena, {
-          title: 'Naira Deposit (Flutterwave)',
-          type: 'deposit',
-          paymentMethod: 'Flutterwave · NGN',
-          counterparty: 'Flutterwave',
-          reference,
-          amount: amountNgn,
-          notifTitle: 'NGN Deposit Approved',
-          notifMessage: `Your NGN deposit of ₦${amountNgn.toLocaleString()} was confirmed. ${xena.toLocaleString()} XENA credited.`,
-        });
-
+        // Credit the depositor via credit_payment RPC (handles welcome bonus ₦1,500)
+        await creditPayment(reference, 'flutterwave', amountNgn, 'NGN', xena, email, { flutterwave_tx: tx });
+        
         // Referral bonus: credit referrer $0.38 worth of XENA
         try {
           const reward = await calculateReferralReward(sb);

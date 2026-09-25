@@ -39,6 +39,15 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateTab, onSignupS
   const [dob, setDob] = useState('');
   const [showExplainer, setShowExplainer] = useState(false);
 
+  // Extract referral code from URL query params on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    if (ref) {
+      setReferral(ref);
+    }
+  }, []);
+
   const inputCls =
     'w-full bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-3.5 py-2.5 text-xs font-semibold text-[#171717] focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/20 focus:border-[#7C3AED] focus:bg-white transition-all placeholder:text-[#9CA3AF]';
 
