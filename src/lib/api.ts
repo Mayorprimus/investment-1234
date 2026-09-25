@@ -597,8 +597,18 @@ async function postServerless(path: string, body: Record<string, unknown>): Prom
 }
 
 export async function flutterwaveInitialize(amountNgn: number): Promise<{ ok: boolean; error?: string; paymentLink?: string }> {
+  // Primary: generate a real payment link for the exact amount the user entered.
+  let serverError: string | undefined;
+  if (amountNgn > 0) {
+    const data = await postServerless('/api/flutterwave/initialize', { amountNgn: Number(amountNgn) });
+    if (data?.ok && data?.paymentLink) {
+      return { ok: true, paymentLink: data.paymentLink };
+    }
+    serverError = data?.error;
+  }
+  // Fallback: a statically configured link (amount baked in), if one is provided.
   const link = import.meta.env.VITE_FLUTTERWAVE_PAYMENT_LINK;
-  if (!link) return { ok: false, error: 'Payment link not configured.' };
+  if (!link) return { ok: false, error: serverError || 'Payment link not configured.' };
   return { ok: true, paymentLink: link };
 }
 
