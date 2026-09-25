@@ -7,7 +7,7 @@ interface InvestmentsPageProps {
   balances: UserBalances;
   catalog?: VaultPackage[];
   onSelectPlan: (plan: InvestmentPlan) => void;
-  onStakeNewPlan: (plan: InvestmentPlan) => boolean;
+  onStakeNewPlan: (plan: InvestmentPlan) => Promise<boolean>;
   user?: UserProfile;
   // Global XENA/USD price — authoritative source; per-profile balances.currentPrice
   // is stale and gets re-clobbered on every realtime sync (causing the displayed
@@ -396,8 +396,8 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
                 </div>
 
                 <button
-                  onClick={() => {
-                    const ok = onStakeNewPlan({
+                  onClick={async () => {
+                    const ok = await onStakeNewPlan({
                       id: plan.id,
                       name: plan.name,
                       category: plan.category,
@@ -492,8 +492,8 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
                 <span className="text-sm font-extrabold text-white font-mono">{(calcAmount + calculatedReturn).toFixed(2)} XENA</span>
               </div>
               <button
-                onClick={() => {
-                  const ok = onStakeNewPlan({
+                onClick={async () => {
+                  const ok = await onStakeNewPlan({
                     id: 'calc-custom',
                     name: `${calcDuration}-Day Custom Vault`,
                     category: 'Calculated',

@@ -128,6 +128,7 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
   const minWithdrawalNgn = limits?.min_withdrawal_ngn ?? 5000;
 
   // XENA rate for display/conversion: 1 XENA = xenaNgnRate NGN
+  const rate = Math.max(0.0001, xenaNgnRate);
   const xenaFromNgn = (n: number) => Math.round((n / xenaNgnRate) * 10000) / 10000;
   const fmtNgn = (n: number) => `₦${Math.round(n).toLocaleString('en-US')}`;
   const ngnFromXena = (x: number) => Math.round(x * xenaNgnRate);

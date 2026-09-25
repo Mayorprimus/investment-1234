@@ -116,9 +116,13 @@ begin
   );
   update public.profiles set
     balances = jsonb_set(
-      jsonb_set(balances, '{availableXena}', ((balances->>'availableXena')::numeric - v_amt)::numeric::text::jsonb),
-      '{investedXena}',
-      ((balances->>'investedXena')::numeric + v_amt)::numeric::text::jsonb
+      jsonb_set(
+        jsonb_set(balances, '{availableXena}', ((balances->>'availableXena')::numeric - v_amt)::numeric::text::jsonb),
+        '{investedXena}',
+        ((balances->>'investedXena')::numeric + v_amt)::numeric::text::jsonb
+      ),
+      '{totalBalance}',
+      (greatest(0, (balances->>'totalBalance')::numeric - v_amt))::numeric::text::jsonb
     ),
     transactions = jsonb_build_array(tx) || transactions,
     notifications = jsonb_build_array(notif) || notifications,

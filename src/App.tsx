@@ -351,11 +351,11 @@ verifiedAccountsCount: user.verifiedAccountsCount,
   const handleBalanceChange = (amountDelta: number, newTx: Transaction) => {
     setBalances((prev) => {
       const newAvailable = Math.max(0, prev.availableXena + amountDelta);
-      const newTotal = prev.investedXena + newAvailable;
       return {
         ...prev,
         availableXena: newAvailable,
-        totalBalance: newTotal,
+        totalBalance: newAvailable,
+        totalXena: newAvailable,
       };
     });
     setTransactions((prev) => [newTx, ...prev]);
@@ -650,8 +650,19 @@ verifiedAccountsCount: user.verifiedAccountsCount,
       alert(res.error || 'Unable to stake this vault.');
       return false;
     }
-    // Optimistically mark the plan as held so the buy button stays disabled
-    // until the realtime sync confirms it from the server.
+    // Optimistically mark the plan as held and move the XENA from available
+    // to invested so the balance cards update instantly. Total = new available.
+    const staked = res.investment?.investedAmount ?? plan.investedAmount;
+    setBalances((prev) => {
+      const newAvailable = Math.max(0, prev.availableXena - staked);
+      return {
+        ...prev,
+        availableXena: newAvailable,
+        investedXena: prev.investedXena + staked,
+        totalBalance: newAvailable,
+        totalXena: newAvailable,
+      };
+    });
     if (res.investment) {
       setInvestments((prev) => (prev.some((p) => p.name === plan.name) ? prev : [res.investment, ...prev]));
     }
@@ -724,12 +735,11 @@ verifiedAccountsCount: user.verifiedAccountsCount,
 
     setBalances((prev) => {
       const newAvailable = prev.availableXena + amount;
-      const newTotal = (prev.totalBalance || prev.totalXena) + amount;
       return {
         ...prev,
         availableXena: newAvailable,
-        totalBalance: newTotal,
-        totalXena: prev.totalXena + amount,
+        totalBalance: newAvailable,
+        totalXena: newAvailable,
       };
     });
 

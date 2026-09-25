@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Mail, Lock, Eye, EyeOff, ArrowRight, ShieldCheck, Zap, Sparkles, Check, Loader2, User, Gift, Globe, Calendar, ChevronDown, Sparkle, Coins, Rocket } from 'lucide-react';
 
 interface SignupPageProps {

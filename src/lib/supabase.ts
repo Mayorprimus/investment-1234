@@ -88,15 +88,14 @@ export async function getSessionToken(): Promise<string | null> {
 // ---------- DB row → client shape mappers (snake_case → camelCase) ----------
 
 export function mapBalances(b: any): UserBalances {
-  // Derive totals from the authoritative parts. Stored `totalXena`/`totalBalance`
-  // go stale after an admin credit (which bumps availableXena/totalBalance but
-  // not totalXena), so "Total Assets" would otherwise lag behind the real balance.
+  // Total balance = spendable (available) balance. Storing the sum with
+  // investedXena was wrong: buying a plan moves XENA from available to
+  // invested, so the Total card must drop to the new available figure.
   const availableXena = Number(b?.availableXena || 0);
   const investedXena = Number(b?.investedXena || 0);
-  const derivedTotal = availableXena + investedXena;
   return {
-    totalXena: derivedTotal,
-    totalBalance: derivedTotal,
+    totalXena: availableXena,
+    totalBalance: availableXena,
     usdRate: Number(b?.usdRate || DEFAULT_PRICE),
     change24hAmount: Number(b?.change24hAmount || 0),
     change24hPercent: Number(b?.change24hPercent || 0),
