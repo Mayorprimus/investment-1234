@@ -185,7 +185,14 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   const [antiPhishingCode, setAntiPhishingCode] = useState('XENA-SECURE-99');
   const [isEditingCode, setIsEditingCode] = useState(false);
   const [newCode, setNewCode] = useState('');
-  const [strictWhitelistOnly, setStrictWhitelistOnly] = useState(true);
+  const [strictWhitelistOnly, setStrictWhitelistOnly] = useState(() => {
+    try {
+      const v = typeof window !== 'undefined' ? window.localStorage.getItem('xena:strictWhitelist') : null;
+      return v === null ? true : v === '1';
+    } catch {
+      return true;
+    }
+  });
   const [isEmergencyLocked, setIsEmergencyLocked] = useState(false);
   const [showFreezeModal, setShowFreezeModal] = useState(false);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
@@ -327,11 +334,37 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   const [statementFormat, setStatementFormat] = useState<'CSV' | 'PDF'>('PDF');
   const [statementDownloaded, setStatementDownloaded] = useState(false);
 
-  // Preferences
-  const [currency, setCurrency] = useState<'USD' | 'EUR' | 'GBP'>('USD');
-  const [emailAlerts, setEmailAlerts] = useState(true);
-  const [tradeNotifications, setTradeNotifications] = useState(true);
-  const [marketingUpdates, setMarketingUpdates] = useState(false);
+  // Preferences — persisted locally so toggles survive page reloads.
+  const readPref = (key: string, fallback: boolean) => {
+    try {
+      const v = typeof window !== 'undefined' ? window.localStorage.getItem(`xena:${key}`) : null;
+      return v === null ? fallback : v === '1';
+    } catch {
+      return fallback;
+    }
+  };
+  const [currency, setCurrency] = useState<'USD' | 'EUR' | 'GBP'>(() => {
+    try {
+      const v = typeof window !== 'undefined' ? window.localStorage.getItem('xena:currency') : null;
+      return (v === 'EUR' || v === 'GBP' ? v : 'USD') as 'USD' | 'EUR' | 'GBP';
+    } catch {
+      return 'USD';
+    }
+  });
+  const [emailAlerts, setEmailAlerts] = useState(() => readPref('emailAlerts', true));
+  const [tradeNotifications, setTradeNotifications] = useState(() => readPref('tradeNotifications', true));
+  const [marketingUpdates, setMarketingUpdates] = useState(() => readPref('marketingUpdates', false));
+
+  const persistPref = (key: string, value: boolean) => {
+    try { window.localStorage.setItem(`xena:${key}`, value ? '1' : '0'); } catch {}
+  };
+  const handleTogglePref = (key: string, current: boolean, setter: (v: boolean) => void, label: string) => {
+    const next = !current;
+    setter(next);
+    persistPref(key, next);
+    setSavedNotice(`${label} ${next ? 'enabled' : 'disabled'}.`);
+    setTimeout(() => setSavedNotice(null), 2500);
+  };
 
   // Customer Support
   const [supportInput, setSupportInput] = useState<string>('');
@@ -448,6 +481,16 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
     setPinSet(next);
     onUpdateSecurity({ twoFactor, pinSet: next });
     setSavedNotice(next ? '6-Digit Security PIN protection enabled.' : 'Security PIN removed.');
+    setTimeout(() => setSavedNotice(null), 3000);
+  };
+
+  const handleToggleWhitelist = () => {
+    const next = !strictWhitelistOnly;
+    setStrictWhitelistOnly(next);
+    try { window.localStorage.setItem('xena:strictWhitelist', next ? '1' : '0'); } catch {}
+    setSavedNotice(next
+      ? 'Strict Address Whitelist enabled — withdrawals only to registered addresses.'
+      : 'Strict Address Whitelist disabled — withdrawals to any address are allowed.');
     setTimeout(() => setSavedNotice(null), 3000);
   };
 
@@ -959,7 +1002,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                   <input
                     type="checkbox"
                     checked={strictWhitelistOnly}
-                    onChange={(e) => setStrictWhitelistOnly(e.target.checked)}
+                    onChange={handleToggleWhitelist}
                     className="sr-only"
                   />
                   <span className={`w-11 h-6 rounded-full transition-colors ${strictWhitelistOnly ? 'bg-gradient-to-r from-[#7C3AED] to-[#A855F7]' : 'bg-[#E5E0EE]'}`}>
@@ -1491,7 +1534,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 {(['USD', 'EUR', 'GBP'] as const).map((cur) => (
                   <button
                     key={cur}
-                    onClick={() => { setCurrency(cur); setSavedNotice(`Currency set to ${cur}`); setTimeout(() => setSavedNotice(null), 2000); }}
+                    onClick={() => {
+                      setCurrency(cur);
+                      try { window.localStorage.setItem('xena:currency', cur); } catch {}
+                      setSavedNotice(`Display currency set to ${cur}.`);
+                      setTimeout(() => setSavedNotice(null), 2000);
+                    }}
                     className={`px-3 py-1 text-xs font-bold rounded-lg cursor-pointer transition-colors ${currency === cur ? 'bg-[#6D28D9] text-white' : 'text-[#6B7280] hover:text-[#171717]'}`}
                   >
                     {cur}
@@ -1500,9 +1548,9 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
               </div>
             </div>
 
-            <PrefToggle label="Email Security Alerts" hint="Instant email notices on login or password change" checked={emailAlerts} onChange={setEmailAlerts} />
-            <PrefToggle label="Trade & Staking Yield Notifications" hint="Daily summary of staking yields earned from vaults" checked={tradeNotifications} onChange={setTradeNotifications} />
-            <PrefToggle label="Marketing & Ecosystem Announcements" hint="New yield vault releases and market insights" checked={marketingUpdates} onChange={setMarketingUpdates} />
+            <PrefToggle label="Email Security Alerts" hint="Instant email notices on login or password change" checked={emailAlerts} onChange={(v) => handleTogglePref('emailAlerts', emailAlerts, setEmailAlerts, 'Email Security Alerts')} />
+            <PrefToggle label="Trade & Staking Yield Notifications" hint="Daily summary of staking yields earned from vaults" checked={tradeNotifications} onChange={(v) => handleTogglePref('tradeNotifications', tradeNotifications, setTradeNotifications, 'Trade & Staking notifications')} />
+            <PrefToggle label="Marketing & Ecosystem Announcements" hint="New yield vault releases and market insights" checked={marketingUpdates} onChange={(v) => handleTogglePref('marketingUpdates', marketingUpdates, setMarketingUpdates, 'Marketing updates')} />
           </ProfileSection>
         </div>
       )}
