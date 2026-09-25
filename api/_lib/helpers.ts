@@ -228,3 +228,10 @@ export async function updateBlobDeposit(matchId: string, patch: any): Promise<vo
   const next = deposits.map((d: any) => (d.id === matchId ? { ...d, ...patch } : d));
   await setAdminBlob({ ...blob, deposits: next });
 }
+
+// Referral reward calculation - $0.38 worth of XENA
+export async function calculateReferralReward(sb: any): Promise<number> {
+  const { data } = await sb.from('xena_settings').select('value').eq('key', 'price').maybeSingle();
+  const price = Number(data?.value?.price ?? 0.0002);
+  return Math.round(0.38 / price); // 1,900 at $0.0002
+}

@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { json, readJsonBody, handleError, requireAdminToken, requireSupabase, creditUser, updateBlobDeposit } from '../_lib/helpers.js';
+import { json, readJsonBody, handleError, requireAdminToken, requireSupabase, creditUser, updateBlobDeposit, calculateReferralReward } from '../_lib/helpers.js';
 
 const toDisplayStatus = (status: string): string => {
   const s = String(status || '').toLowerCase();

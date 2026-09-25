@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireEnv, readRawBody, json, handleError, findPendingPayment, updatePendingPayment, creditUser, getSetting } from '../_lib/helpers.js';
+import { requireEnv, readRawBody, json, handleError, findPendingPayment, updatePendingPayment, creditUser, getSetting, calculateReferralReward, appendBlobDeposit, requireSupabase } from '../_lib/helpers.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -42,6 +42,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       notifTitle: 'Crypto Deposit Confirmed',
       notifMessage: `Your ${String(pay.meta?.coin || '').toUpperCase()} payment was confirmed. ${xena.toLocaleString()} XENA has been credited to your balance.`,
     });
+
+    // Referral bonus: credit referrer $0.38 worth of XENA
+    try {
+      const sb = requireSupabase();
+      const reward = await calculateReferralReward(sb);
+      const { data: depositor } = await sb.from('profiles').select('referrer').eq('email', pay.email).maybeSingle();
+      if (depositor?.referrer) {
+        const { data: referrer } = await sb.from('profiles').select('email, name').eq('referral_code', depositor.referrer).maybeSingle();
+        if (referrer && referrer.email !== pay.email) {
+          await creditUser(referrer.email, reward, {
+            title: 'Referral Bonus',
+            type: 'referral',
+            notifTitle: 'Referral Deposit Bonus',
+            notifMessage: `Your referral completed a deposit. +${reward.toLocaleString()} XENA credited!`,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('NOWPayments IPN: referral bonus failed', e?.message || e);
+    }
+
+    // Update admin_state blob to reflect the confirmed payment
+    try {
+      const sb = requireSupabase();
+      const { data: adminDeposits } = await sb.from('payments').select('id,email,amount,currency,xena,status,reference,created_at').eq('provider', 'nowpayments').eq('email', pay.email).order('created_at', { ascending: false }).limit(1);
+      const paymentRow = adminDeposits?.[0];
+      if (paymentRow) {
+        const { data: profile } = await sb.from('profiles').select('name').eq('email', pay.email).maybeSingle();
+        await appendBlobDeposit({
+          id: paymentRow.id,
+          user: profile?.name || pay.email.split('@')[0],
+          email: pay.email,
+          method: `NOWPayments · ${String(pay.meta?.coin || '').toUpperCase() || 'Crypto'}`,
+          amount: Math.round(amount / price),
+          unit: 'USD',
+          xena,
+          status: 'Completed',
+          time: 'Just now',
+          reference: paymentRow.reference,
+        });
+      }
+    } catch (e) {
+      console.warn('NOWPayments IPN: admin ledger mirror failed', e?.message || e);
+    }
 
     return json(res, { ok: true });
   } catch (e) {

@@ -55,7 +55,7 @@ import {
   Linkedin,
   RefreshCw,
 } from 'lucide-react';
-import { getSupportConversations, replySupportConversation, resolveSupportConversation, replaceAnnouncements, replacePromos, updateAdminSettings, adminGetDeposits, adminDecideDeposit, adminGetTaskSubmissions, adminReviewTask, adminAddTask, adminGetAllTasks, adminDeleteTask } from '../lib/api';
+import { getSupportConversations, replySupportConversation, resolveSupportConversation, replaceAnnouncements, replacePromos, updateAdminSettings, adminGetDeposits, adminDecideDeposit, adminGetTaskSubmissions, adminReviewTask, adminAddTask, adminGetAllTasks, adminDeleteTask, calculateReferralReward } from '../lib/api';
 import type { SupportConversation } from '../types';
 
 interface Props {
@@ -515,11 +515,12 @@ export const AdminPanel: React.FC<Props> = ({
   const pendingDepositCount = deposits.filter((d) => d.status === 'Pending').length;
 
   const referredRegistrations = registeredUsers.filter((ru) => ru.referrer);
+  const referralRewardPerDeposit = calculateReferralReward(xenaPrice);
   const referralOverview = referrals.map((r) => {
     const matched = referredRegistrations.filter((ru) => ru.referrer.toUpperCase() === r.refCode.toUpperCase());
     const deposited = matched.filter((ru) => deposits.some((d) => d.email.toLowerCase() === ru.email.toLowerCase()));
     const bonusCount = matched.length + deposited.length;
-    const earnedXena = deposited.length * 100;
+    const earnedXena = deposited.length * referralRewardPerDeposit;
     return { ...r, newCount: matched.length, depositedCount: deposited.length, earnedXena };
   });
   const referralBonusTotal = referralOverview.reduce((s, r) => s + r.earnedXena, 0);
@@ -1024,8 +1025,9 @@ export const AdminPanel: React.FC<Props> = ({
                                       if (res.ok) {
                                         setDeposits((prev) => prev.map((x) => x.id === d.id ? { ...x, status: 'Completed' } : x));
                                         if (matchedRef) {
-                                          setBonusLog((prev) => [{ id: `b-${Date.now()}`, code: matchedRef.refCode, name: matchedRef.name, xena: 100, time: 'Just now' }, ...prev]);
-                                          notify(`${d.user} deposited — +100 XENA bonus auto-approved to ${matchedRef.name}'s referral`);
+                                          const referralReward = calculateReferralReward(xenaPrice);
+                                          setBonusLog((prev) => [{ id: `b-${Date.now()}`, code: matchedRef.refCode, name: matchedRef.name, xena: referralReward, time: 'Just now' }, ...prev]);
+                                          notify(`${d.user} deposited — +${referralReward} XENA bonus auto-approved to ${matchedRef.name}'s referral`);
                                         } else {
                                           notify('Deposit approved');
                                         }
@@ -1061,6 +1063,18 @@ export const AdminPanel: React.FC<Props> = ({
               <div className="bg-white border border-[#EDE9FE] rounded-2xl p-4 shadow-sm">
                 <h3 className="text-sm font-bold text-[#171717] pb-3 border-b border-[#EDE9FE]">Live Payment Ledger (Paystack / NOWPayments)</h3>
                 <p className="text-[10px] text-[#6B7280] mt-2">Deposits credited automatically when confirmed. Webhook + verify both idempotent.</p>
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      // Trigger a refresh by re-fetching state
+                      window.dispatchEvent(new CustomEvent('admin-refresh-state'));
+                    }}
+                    className="px-2.5 py-1 rounded-md cursor-pointer transition-all text-[10px] font-bold bg-[#F8F7FC] border border-[#EDE9FE] text-[#6B7280] hover:text-[#171717] flex items-center gap-1"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Refresh</span>
+                  </button>
+                </div>
                 <div className="mt-3 overflow-x-auto">
                   <table className="w-full text-left text-xs min-w-[640px]">
                     <thead>
@@ -1072,29 +1086,60 @@ export const AdminPanel: React.FC<Props> = ({
                         <th className="py-2 pr-3">Status</th>
                         <th className="py-2 pr-3">Reference</th>
                         <th className="py-2">When</th>
+                      <th className="py-2">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#EDE9FE]">
+                    {payments.slice(0, 40).map((p) => (
+                      <tr key={p.id} className="hover:bg-[#F8F7FC]">
+                        <td className="py-2.5 pr-3 font-bold text-[#171717]">{p.email || '—'}</td>
+                        <td className="py-2.5 pr-3">
+                          <span className="text-[9px] font-bold px-2 py-0.5 rounded-full border bg-[#F8F7FC] text-[#6B7280] border-[#EDE9FE]">{String(p.provider || '').toUpperCase()}</span>
+                        </td>
+                        <td className="py-2.5 pr-3 text-right font-mono font-bold text-[#171717]">{Number(p.amount || 0).toLocaleString()} {p.currency || 'USD'}</td>
+                        <td className="py-2.5 pr-3 text-right font-mono text-[#6D28D9]">{Number(p.xena || 0)}</td>
+                        <td className="py-2.5 pr-3">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            p.status === 'confirmed' ? 'bg-emerald-50 text-[#16A34A] border-emerald-100'
+                            : p.status === 'pending' ? 'bg-amber-50 text-amber-600 border-amber-100'
+                            : 'bg-red-50 text-red-600 border-red-100'}`}>
+                            {String(p.status || 'pending').toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="py-2.5 pr-3 text-[10px] text-[#9CA3AF] font-mono max-w-[140px] truncate">{p.reference}</td>
+                        <td className="py-2.5 text-[10px] text-[#6B7280] whitespace-nowrap">{p.created_at ? new Date(p.created_at).toLocaleString() : ''}</td>
+                        <td className="py-2.5 text-right whitespace-nowrap">
+                          {String(p.status || '').toLowerCase() === 'pending' ? (
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={async () => {
+                                  const res = await adminDecideDeposit(p.id, 'approved');
+                                  if (res.ok) {
+                                    setPayments((prev) => prev.map((x) => x.id === p.id ? { ...x, status: 'confirmed' } : x));
+                                    notify('Payment approved');
+                                  } else {
+                                    notify(res.error || 'Failed to approve');
+                                  }
+                                }}
+                                className="px-2 py-1 rounded-lg bg-emerald-50 text-[#16A34A] text-[10px] font-bold border border-emerald-100 cursor-pointer">Approve</button>
+                              <button
+                                onClick={async () => {
+                                  const res = await adminDecideDeposit(p.id, 'rejected');
+                                  if (res.ok) {
+                                    setPayments((prev) => prev.map((x) => x.id === p.id ? { ...x, status: 'rejected' } : x));
+                                    notify('Payment rejected');
+                                  } else {
+                                    notify(res.error || 'Failed to reject');
+                                  }
+                                }}
+                                className="px-2 py-1 rounded-lg bg-red-50 text-red-600 text-[10px] font-bold border border-red-100 cursor-pointer">Reject</button>
+                            </div>
+                          ) : (
+                            <span className="text-[9px] text-[#9CA3AF]">{p.created_at ? new Date(p.created_at).toLocaleString() : ''}</span>
+                          )}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#EDE9FE]">
-                      {payments.slice(0, 40).map((p) => (
-                        <tr key={p.id} className="hover:bg-[#F8F7FC]">
-                          <td className="py-2.5 pr-3 font-bold text-[#171717]">{p.email || '—'}</td>
-                          <td className="py-2.5 pr-3">
-                            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full border bg-[#F8F7FC] text-[#6B7280] border-[#EDE9FE]">{String(p.provider || '').toUpperCase()}</span>
-                          </td>
-                          <td className="py-2.5 pr-3 text-right font-mono font-bold text-[#171717]">{Number(p.amount || 0).toLocaleString()} {p.currency || 'USD'}</td>
-                          <td className="py-2.5 pr-3 text-right font-mono text-[#6D28D9]">{Number(p.xena || 0)}</td>
-                          <td className="py-2.5 pr-3">
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                              p.status === 'confirmed' ? 'bg-emerald-50 text-[#16A34A] border-emerald-100'
-                              : p.status === 'pending' ? 'bg-amber-50 text-amber-600 border-amber-100'
-                              : 'bg-red-50 text-red-600 border-red-100'}`}>
-                              {String(p.status || 'pending').toUpperCase()}
-                            </span>
-                          </td>
-                          <td className="py-2.5 pr-3 text-[10px] text-[#9CA3AF] font-mono max-w-[140px] truncate">{p.reference}</td>
-                          <td className="py-2.5 text-[10px] text-[#6B7280] whitespace-nowrap">{p.created_at ? new Date(p.created_at).toLocaleString() : ''}</td>
-                        </tr>
-                      ))}
+                    ))}
                     </tbody>
                   </table>
                   {payments.length === 0 && <p className="text-center text-xs text-[#9CA3AF] py-6">No live payments yet.</p>}

@@ -275,6 +275,18 @@ export default function App() {
       if (timer) clearTimeout(timer);
       sb.removeChannel(channel);
     };
+
+    // Listen for manual refresh events from admin panel
+    const handleAdminRefresh = () => {
+      if (!cancelled) refresh().catch(() => {});
+    };
+    window.addEventListener('admin-refresh-state', handleAdminRefresh);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      sb.removeChannel(channel);
+      window.removeEventListener('admin-refresh-state', handleAdminRefresh);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

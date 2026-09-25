@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { readRawBody, getSetting, findPendingPayment, findPendingPaymentByEmail, updatePendingPayment, requireSupabase, savePendingPayment, appendBlobDeposit } from '../_lib/helpers.js';
+import { readRawBody, getSetting, findPendingPayment, findPendingPaymentByEmail, updatePendingPayment, requireSupabase, savePendingPayment, appendBlobDeposit, creditUser, calculateReferralReward, updateBlobDeposit } from '../_lib/helpers.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -102,6 +102,67 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       } catch (e) {
         console.warn('Flutterwave webhook: admin ledger mirror failed', e?.message || e);
+      }
+
+      // Credit depositor if not already credited (webhook is source of truth for confirmed payments)
+      const sb = requireSupabase();
+      const { data: payCheck } = await sb.from('payments').select('status').eq('reference', reference).maybeSingle();
+      if (payCheck && payCheck.status !== 'completed' && payCheck.status !== 'confirmed') {
+        await updatePendingPayment(reference, { status: 'completed', xena, amount: amountNgn, email });
+        
+        // Credit the depositor
+        await creditUser(email, xena, {
+          title: 'Naira Deposit (Flutterwave)',
+          type: 'deposit',
+          paymentMethod: 'Flutterwave · NGN',
+          counterparty: 'Flutterwave',
+          reference,
+          amount: amountNgn,
+          notifTitle: 'NGN Deposit Approved',
+          notifMessage: `Your NGN deposit of ₦${amountNgn.toLocaleString()} was confirmed. ${xena.toLocaleString()} XENA credited.`,
+        });
+
+        // Referral bonus: credit referrer $0.38 worth of XENA
+        try {
+          const reward = await calculateReferralReward(sb);
+          const { data: depositor } = await sb.from('profiles').select('referrer').eq('email', email).maybeSingle();
+          if (depositor?.referrer) {
+            const { data: referrer } = await sb.from('profiles').select('email, name').eq('referral_code', depositor.referrer).maybeSingle();
+            if (referrer && referrer.email !== email) {
+              await creditUser(referrer.email, reward, {
+                title: 'Referral Bonus',
+                type: 'referral',
+                notifTitle: 'Referral Deposit Bonus',
+                notifMessage: `Your referral completed a deposit. +${reward.toLocaleString()} XENA credited!`,
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('Flutterwave webhook: referral bonus failed', e?.message || e);
+        }
+
+        // Update admin_state blob to reflect the confirmed payment
+        try {
+          const { data: adminDeposits } = await sb.from('payments').select('id,email,amount,currency,xena,status,reference,created_at').eq('provider', 'flutterwave').eq('email', email).order('created_at', { ascending: false }).limit(1);
+          const paymentRow = adminDeposits?.[0];
+          if (paymentRow) {
+            const { data: profile } = await sb.from('profiles').select('name').eq('email', email).maybeSingle();
+            await appendBlobDeposit({
+              id: paymentRow.id,
+              user: profile?.name || email.split('@')[0],
+              email,
+              method: 'Flutterwave · NGN',
+              amount: Math.round(amountNgn / rate),
+              unit: 'USD',
+              xena,
+              status: 'Completed',
+              time: 'Just now',
+              reference: paymentRow.reference,
+            });
+          }
+        } catch (e) {
+          console.warn('Flutterwave webhook: admin ledger mirror failed', e?.message || e);
+        }
       }
     }
 

@@ -747,3 +747,9 @@ export async function adminGetAllTasks(): Promise<{ ok: boolean; error?: string;
     return { ok: false, error: describeAuthError(e) };
   }
 }
+
+// Calculate referral reward based on current XENA price ($0.38 worth)
+export function calculateReferralReward(xenaPriceUsd: number): number {
+  if (!xenaPriceUsd || xenaPriceUsd <= 0) return 1900; // fallback at $0.0002
+  return Math.round(0.38 / xenaPriceUsd);
+}
