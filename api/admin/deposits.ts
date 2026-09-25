@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { json, readJsonBody, handleError, requireAdminToken, requireSupabase, creditUser, updateBlobDeposit, calculateReferralReward } from '../_lib/helpers.js';
+import { json, readJsonBody, handleError, requireAdminToken, requireSupabase, creditUser, updateBlobDeposit, calculateReferralReward, creditPayment } from '../_lib/helpers.js';
 
 const toDisplayStatus = (status: string): string => {
   const s = String(status || '').toLowerCase();
@@ -69,16 +69,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ? `Your NGN deposit of ₦${amount.toLocaleString()} was approved. ${xena.toLocaleString()} XENA credited.`
           : `Your ${currency} deposit of ${amount.toLocaleString()} was approved. ${xena.toLocaleString()} XENA credited.`;
 
-        await creditUser(email, xena, {
-          title,
-          type: 'deposit',
-          paymentMethod: getProviderLabel(provider, currency),
-          counterparty: provider === 'flutterwave' ? 'Flutterwave' : 'NOWPayments',
-          reference: deposit.reference,
-          amount,
-          notifTitle,
-          notifMessage: notifMsg,
+        // Credit depositor via credit_payment RPC (handles welcome bonuses: ₦1,500 NGN / $10 crypto for first deposits)
+        await creditPayment(deposit.reference, provider, amount, currency, xena, email, {
+          admin_approved: true,
+          admin_note: note || null,
         });
+
+        // Referral bonus: credit referrer $0.38 worth of XENA
+        try {
+          const reward = await calculateReferralReward(sb);
+          const { data: depositor } = await sb.from('profiles').select('referrer').eq('email', email).maybeSingle();
+          if (depositor?.referrer) {
+            const { data: referrer } = await sb.from('profiles').select('email, name').eq('referral_code', depositor.referrer).maybeSingle();
+            if (referrer && referrer.email !== email) {
+              await creditUser(referrer.email, reward, {
+                title: 'Referral Bonus',
+                type: 'referral',
+                notifTitle: 'Referral Deposit Bonus',
+                notifMessage: `Your referral completed a deposit. +${reward.toLocaleString()} XENA credited!`,
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('Admin approve deposit: referral bonus failed', e?.message || e);
+        }
 
         const { error: upErr } = await sb
           .from('payments')
