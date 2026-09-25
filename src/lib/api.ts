@@ -257,6 +257,17 @@ export async function getMyReferralStats(): Promise<{ referralCode: string; coun
   }
 }
 
+// Real on-chain internal send: the recipient is resolved on the server to the
+// account that actually owns the unique XENA ID, so a send can't hit the wrong user.
+export async function transferXena(code: string, amountXena: number, note?: string): Promise<{ ok: boolean; error?: string; recipient?: string }> {
+  try {
+    const res = await callRpc<any>('transfer_xena', { p_code: code.trim(), p_amount: Number(amountXena), p_note: note || '' });
+    return res?.ok ? { ok: true, recipient: res?.recipient } : { ok: false, error: res?.error || 'Transfer failed.' };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Unable to complete the transfer.' };
+  }
+}
+
 // ---------- Session state ----------
 export async function getMyState(): Promise<{ profile?: any; investments?: any[]; p2pTrades?: any[]; payments?: any[]; withdrawals?: any[] } | null> {
   try {

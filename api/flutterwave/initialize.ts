@@ -16,7 +16,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method !== 'POST') return json(res, { ok: false, error: 'Method not allowed.' }, 405);
     const body = await readJsonBody(req);
     const token = String(body?.token || '');
-    const amountNgn = Number(body?.amountNgn || 0);
+    const amountNgn = Math.round(Number(body?.amountNgn || 0));
 
     if (!token) return json(res, { ok: false, error: 'Not authenticated.' }, 401);
     if (!(amountNgn > 0)) return json(res, { ok: false, error: 'Invalid amount.' }, 400);
@@ -33,7 +33,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const rate = Number(rateSetting?.ngnRate ?? limits?.xenaNgnRate ?? 0.266);
     const xena = Math.round((amountNgn / rate) * 10000) / 10000;
     const base = getAppUrl() || `https://${req.headers.host || ''}`;
-    const txRef = `xena-${email.split('@')[0]}-${Date.now()}`;
+    // Flutterwave tx_ref must be alphanumeric (+ - _) — user emails (dots, +,
+    // symbols) are NOT safe here, so build it from time + random only.
+    const txRef = `xena-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
 
     const secretKey = process.env.FLUTTERWAVE_SECRET_KEY || '';
     if (!secretKey) {

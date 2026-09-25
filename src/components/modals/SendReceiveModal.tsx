@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Send, QrCode, Copy, Check, ShieldCheck, Sparkles, IdCard, BadgeCheck, AlertCircle, AtSign } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Transaction } from '../../types';
+import { transferXena } from '../../lib/api';
 
 interface SendReceiveModalProps {
   isOpen: boolean;
@@ -31,6 +32,7 @@ export const SendReceiveModal: React.FC<SendReceiveModalProps> = ({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [serverError, setServerError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -45,8 +47,9 @@ export const SendReceiveModal: React.FC<SendReceiveModalProps> = ({
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  const handleSend = (e: React.FormEvent) => {
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
+    setServerError(null);
     const num = parseFloat(amount);
     if (isNaN(num) || num <= 0 || num > availableXena) return;
     if (sendMethod === 'id' && !isIdValid) return;
@@ -55,32 +58,43 @@ export const SendReceiveModal: React.FC<SendReceiveModalProps> = ({
     const counterparty = sendMethod === 'id' ? cleanId : recipientAddress.trim();
 
     setIsProcessing(true);
+
+    // Real internal send: the server resolves the recipient to the account that
+    // actually owns the XENA ID, so it can never credit the wrong user.
+    if (sendMethod === 'id') {
+      const res = await transferXena(cleanId, num, note);
+      if (!res.ok) {
+        setIsProcessing(false);
+        setServerError(res.error || 'Transfer failed.');
+        return;
+      }
+    }
+
+    // External wallet-address sends are network-bound and stay local-only demo.
+    setIsProcessing(false);
+    try {
+      confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
+    } catch {}
+
+    const newTx: Transaction = {
+      id: `tx-${Date.now().toString().slice(-4)}`,
+      title: 'Transfer Sent',
+      type: 'withdrawal',
+      amount: -num,
+      unit: 'XENA',
+      status: 'Completed',
+      timestamp: 'Just now',
+      counterparty,
+      paymentMethod: sendMethod === 'id' ? 'XENA ID Transfer' : 'XENA Mainnet Transfer',
+      fee: 0.00,
+    };
+
+    onSuccess(-num, newTx);
+    setSuccessMsg(`Sent ${num} XENA to ${counterparty} successfully!`);
     setTimeout(() => {
-      setIsProcessing(false);
-      try {
-        confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
-      } catch {}
-
-      const newTx: Transaction = {
-        id: `tx-${Date.now().toString().slice(-4)}`,
-        title: 'Transfer Sent',
-        type: 'withdrawal',
-        amount: -num,
-        unit: 'XENA',
-        status: 'Completed',
-        timestamp: 'Just now',
-        counterparty,
-        paymentMethod: sendMethod === 'id' ? 'XENA ID Transfer' : 'XENA Mainnet Transfer',
-        fee: 0.00,
-      };
-
-      onSuccess(-num, newTx);
-      setSuccessMsg(`Sent ${num} XENA to ${counterparty} successfully!`);
-      setTimeout(() => {
-        setSuccessMsg(null);
-        onClose();
-      }, 1600);
-    }, 700);
+      setSuccessMsg(null);
+      onClose();
+    }, 1600);
   };
 
   return (
@@ -195,13 +209,13 @@ export const SendReceiveModal: React.FC<SendReceiveModalProps> = ({
                       ) : isIdValid ? (
                         <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-emerald-50 border border-emerald-100">
                           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#7C3AED] to-[#A855F7] text-white text-[11px] font-bold flex items-center justify-center">
-                            SC
+                            <IdCard className="w-4 h-4" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-[11px] font-bold text-[#171717] flex items-center gap-1">
-                              Sarah Chukwu <BadgeCheck className="w-3.5 h-3.5 text-emerald-500" />
+                              XENA account <BadgeCheck className="w-3.5 h-3.5 text-emerald-500" />
                             </p>
-                            <p className="text-[10px] text-[#6B7280]">Verified user · Lagos, NG · 98% online</p>
+                            <p className="text-[10px] text-[#6B7280]">{cleanId} · owner will be verified on send</p>
                           </div>
                           <span className="text-[9px] font-bold text-emerald-600 bg-white px-2 py-0.5 rounded-full border border-emerald-200">
                             Verified
@@ -271,6 +285,13 @@ export const SendReceiveModal: React.FC<SendReceiveModalProps> = ({
                 <span>Internal XENA Network Fee:</span>
                 <span className="font-bold text-emerald-600">FREE (0.00 XENA)</span>
               </div>
+
+              {serverError && (
+                <div className="flex items-center gap-2 text-[11px] font-bold text-red-600 bg-red-50 border border-red-100 rounded-xl p-2.5">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{serverError}</span>
+                </div>
+              )}
 
               <button
                 type="submit"

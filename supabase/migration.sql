@@ -69,6 +69,29 @@ begin
   end loop;
 end $$;
 
+-- Guarantee EVERY user has a UNIQUE XENA ID (XN-xxxxxxx): fix rows that are
+-- null/blank or duplicate an earlier row so sends can never resolve to the
+-- wrong account. Generated range stays clear of the trigger's 1M-9.9M range.
+do $$
+declare r record; i int := 8000000; v_id text; v_exists boolean;
+begin
+  for r in
+    select p.id, p.xena_id
+    from public.profiles p
+    where p.xena_id is null or p.xena_id = ''
+       or exists (select 1 from public.profiles q where q.xena_id = p.xena_id and q.xena_id <> '' and q.id < p.id)
+    order by p.created_at nulls last, p.email
+  loop
+    loop
+      v_id := 'XN-' || lpad(i::text, 7, '0');
+      i := i - 1;
+      select exists(select 1 from public.profiles where xena_id = v_id and id <> r.id) into v_exists;
+      if not v_exists then exit; end if;
+    end loop;
+    update public.profiles set xena_id = v_id where id = r.id;
+  end loop;
+end $$;
+
 -- Normalized per-vault investments with live progress, admin-cancel/restart support.
 create table if not exists public.investments (
   id uuid primary key default gen_random_uuid(),
@@ -274,9 +297,18 @@ declare
   v_name text;
   v_ref text;
   v_code text;
+  v_xena_id text;
   v_ok bool := false;
 begin
   v_name := coalesce(nullif(new.raw_user_meta_data->>'name',''), split_part(lower(new.email), '@', 1));
+  -- Every user gets a unique XENA ID (XN-xxxxxxx) — collision-safe retry so
+  -- sends/transfers by ID can never resolve to the wrong account.
+  while (v_xena_id is null) loop
+    v_xena_id := 'XN-' || lpad((floor(random() * 8999999 + 1000000)::int)::text, 7, '0');
+    if exists (select 1 from public.profiles where xena_id = v_xena_id) then
+      v_xena_id := null;
+    end if;
+  end loop;
   -- Every user is assigned his own unique referral code (collision-safe retry).
   while not v_ok loop
     v_code := 'xena-' || lpad(floor(random() * 90000000 + 10000000)::int::text, 8, '0');
@@ -294,7 +326,7 @@ begin
     new.id,
     lower(new.email),
     v_name,
-    'XN-' || lpad((floor(random() * 8999999 + 1000000)::int)::text, 7, '0'),
+    v_xena_id,
     v_code,
     v_code,
     v_ref,
@@ -621,6 +653,103 @@ begin
   if my_code is null then return jsonb_build_object('ok', true, 'referralCode', '', 'count', 0); end if;
   select count(*) into v_count from public.profiles where lower(referrer) = lower(my_code);
   return jsonb_build_object('ok', true, 'referralCode', my_code, 'count', v_count);
+end $$;
+
+--
+-- TRANSFER XENA — real on-chain internal send. The recipient is resolved ONLY
+-- from the account that owns the entered unique XENA ID (referral_code), so a
+-- send can never credit the wrong user. Debits sender, credits recipient,
+-- appends transactions to both sides atomically.
+--
+
+create or replace function public.transfer_xena(p_code text, p_amount numeric, p_note text default '')
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  u uuid := auth.uid();
+  v_code text := lower(trim(coalesce(p_code, '')));
+  v_sender public.profiles%rowtype;
+  v_recip public.profiles%rowtype;
+  v_recip_name text;
+  v_sender_tx jsonb;
+  v_recip_tx jsonb;
+  v_notif jsonb;
+begin
+  if u is null then return jsonb_build_object('ok', false, 'error', 'Not authenticated'); end if;
+  if v_code = '' then return jsonb_build_object('ok', false, 'error', 'Enter a recipient XENA ID.'); end if;
+  if p_amount is null or p_amount <= 0 then return jsonb_build_object('ok', false, 'error', 'Enter a valid amount.'); end if;
+
+  select * into v_sender from public.profiles where id = u;
+  if v_sender is null then return jsonb_build_object('ok', false, 'error', 'Account not found.'); end if;
+  if (v_sender.balances->>'availableXena')::numeric < p_amount then
+    return jsonb_build_object('ok', false, 'error', 'Insufficient available balance.');
+  end if;
+
+  -- Resolve the recipient ONLY by the account that owns this unique ID.
+  select * into v_recip
+  from public.profiles
+  where lower(coalesce(referral_code, xena_code, '')) = v_code and id <> u
+  limit 1;
+  if v_recip is null then return jsonb_build_object('ok', false, 'error', 'No account found with that XENA ID.'); end if;
+
+  v_recip_name := coalesce(v_recip.name, split_part(v_recip.email, '@', 1));
+
+  v_sender_tx := jsonb_build_object(
+    'id', 'tx-send-' || substr(gen_random_uuid()::text, 1, 8),
+    'title', 'Transfer Sent',
+    'type', 'withdraw',
+    'amount', -p_amount,
+    'unit', 'XENA',
+    'status', 'Completed',
+    'timestamp', 'Just now',
+    'counterparty', v_code,
+    'paymentMethod', 'XENA ID Transfer',
+    'fee', 0,
+    'note', coalesce(p_note, '')
+  );
+
+  v_recip_tx := jsonb_build_object(
+    'id', 'tx-rec-' || substr(gen_random_uuid()::text, 1, 8),
+    'title', 'Transfer Received',
+    'type', 'deposit',
+    'amount', p_amount,
+    'unit', 'XENA',
+    'status', 'Completed',
+    'timestamp', 'Just now',
+    'counterparty', coalesce(v_sender.name, split_part(v_sender.email, '@', 1)),
+    'paymentMethod', 'XENA ID Transfer',
+    'fee', 0,
+    'note', coalesce(p_note, '')
+  );
+
+  v_notif := jsonb_build_object(
+    'id', 'notif-tx-' || substr(gen_random_uuid()::text, 1, 8),
+    'title', 'Transfer Received',
+    'message', '+' || p_amount::text || ' XENA received from ' || coalesce(v_sender.name, split_part(v_sender.email, '@', 1)) || '.',
+    'timestamp', 'Just now', 'read', false, 'type', 'transaction'
+  );
+
+  -- Debit sender (available + total stay consistent).
+  update public.profiles set
+    balances = jsonb_set(
+      jsonb_set(balances, '{availableXena}', ((balances->>'availableXena')::numeric - p_amount)::numeric::text::jsonb),
+      '{totalBalance}', (greatest(0, (balances->>'totalBalance')::numeric - p_amount))::numeric::text::jsonb
+    ),
+    transactions = jsonb_build_array(v_sender_tx) || transactions,
+    updated_at = now()
+  where id = u;
+
+  -- Credit recipient.
+  update public.profiles set
+    balances = jsonb_set(
+      jsonb_set(balances, '{availableXena}', ((balances->>'availableXena')::numeric + p_amount)::numeric::text::jsonb),
+      '{totalBalance}', ((coalesce((balances->>'totalBalance')::numeric, 0)) + p_amount)::numeric::text::jsonb
+    ),
+    transactions = jsonb_build_array(v_recip_tx) || transactions,
+    notifications = jsonb_build_array(v_notif) || notifications,
+    updated_at = now()
+  where id = v_recip.id;
+
+  return jsonb_build_object('ok', true, 'amount', p_amount, 'recipient', v_recip_name, 'code', v_code);
 end $$;
 
 --
@@ -1983,6 +2112,7 @@ grant execute on function public.admin_get_state to authenticated;
 grant execute on function public.save_account_profile to authenticated;
 grant execute on function public.claim_referral to authenticated;
 grant execute on function public.get_my_referral_stats to authenticated;
+grant execute on function public.transfer_xena to authenticated;
 grant execute on function public.redeem_promo_code to authenticated;
 grant execute on function public.is_admin to authenticated;
 grant execute on function public.current_email to anon, authenticated;
