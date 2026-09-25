@@ -44,7 +44,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const reward = await calculateReferralReward(sb);
       const { data: depositor } = await sb.from('profiles').select('referrer').eq('email', pay.email).maybeSingle();
       if (depositor?.referrer) {
-        const { data: referrer } = await sb.from('profiles').select('email, name').eq('referral_code', depositor.referrer).maybeSingle();
+        const { data: referrer } = await sb.from('profiles').select('email, name').ilike('referral_code', String(depositor.referrer)).maybeSingle();
         if (referrer && referrer.email !== pay.email) {
           await creditUser(referrer.email, reward, {
             title: 'Referral Bonus',

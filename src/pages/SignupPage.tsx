@@ -299,7 +299,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigateTab, onSignupS
                   <label className="text-[11px] font-bold text-[#171717] block mb-1">Referral Code <span className="text-[9px] font-semibold text-[#9CA3AF]">(optional)</span></label>
                   <div className="relative">
                     <Gift className="w-4 h-4 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input value={referral} onChange={(e) => setReferral(e.target.value)} placeholder="XENA-REF" className={`${inputCls} pl-9`} />
+                    <input value={referral} onChange={(e) => setReferral(e.target.value)} placeholder="xena-12345678" className={`${inputCls} pl-9`} />
                   </div>
                 </div>
 

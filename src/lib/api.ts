@@ -236,6 +236,27 @@ export async function logout(): Promise<void> {
   clearAuthToken();
 }
 
+// ---------- Referrals ----------
+// Attach the inviter's unique code (one-shot, server-guarded) to this account.
+export async function claimReferral(code: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await callRpc<any>('claim_referral', { p_code: code.trim() });
+    return { ok: !!(res && res.ok), error: res?.error };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Unable to claim referral.' };
+  }
+}
+
+// The signed-in user's own unique referral code + how many people signed up with it.
+export async function getMyReferralStats(): Promise<{ referralCode: string; count: number }> {
+  try {
+    const res = await callRpc<any>('get_my_referral_stats');
+    return { referralCode: res?.referralCode || '', count: Number(res?.count || 0) };
+  } catch {
+    return { referralCode: '', count: 0 };
+  }
+}
+
 // ---------- Session state ----------
 export async function getMyState(): Promise<{ profile?: any; investments?: any[]; p2pTrades?: any[]; payments?: any[]; withdrawals?: any[] } | null> {
   try {

@@ -46,7 +46,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   onSelectPlan,
   onSelectP2POffer,
   onOpenSecurity,
-  referralCode = 'XENA-REF',
+  referralCode = '',
   referralCount = 0,
   announcements = INITIAL_ANNOUNCEMENTS,
 }) => {

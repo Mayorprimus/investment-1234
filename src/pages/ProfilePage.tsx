@@ -51,7 +51,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { UserProfile, UserBalances } from '../types';
-import { getSupportConversations, sendSupportMessage, getAuthToken } from '../lib/api';
+import { getSupportConversations, sendSupportMessage, getAuthToken, getMyReferralStats } from '../lib/api';
 import { XenaTokenBadge } from '../components/XenaLogo';
 
 interface ProfilePageProps {
@@ -264,14 +264,14 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   const [kycUpgradePending, setKycUpgradePending] = useState(false);
   const [showKycUpgradeModal, setShowKycUpgradeModal] = useState(false);
 
-  // Referral State
-  const referralCode = user.referral_code || user.xena_code || 'XENA-REF';
+  // Referral State — each user has his own unique code (from their DB profile).
+  const referralCode = user.referralCode || user.xenaCode || '';
   const referralLink = `https://www.xenaventureshq.online/signup?ref=${referralCode}`;
   const [referralStats, setReferralStats] = useState({
-    totalInvited: 18,
-    activeStakers: 12,
-    totalEarnedXena: 145.8,
-    unclaimedXena: 34.2,
+    totalInvited: 0,
+    activeStakers: 0,
+    totalEarnedXena: 0,
+    unclaimedXena: 0,
     tier: 'Gold Ambassador (20% Commission)',
   });
   const [referralsList] = useState([
@@ -308,6 +308,16 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
         if (conv.messages && conv.messages.length > 0) {
           setSupportMessages(conv.messages.map((m) => ({ from: m.from, text: m.text, time: m.time })));
         }
+      }
+    });
+  }, []);
+
+  // Load the real referral count so "people referred" reflects who actually signed up with this user's unique code.
+  useEffect(() => {
+    if (!getAuthToken()) return;
+    getMyReferralStats().then((s) => {
+      if (s.count > 0) {
+        setReferralStats((prev) => ({ ...prev, totalInvited: s.count }));
       }
     });
   }, []);

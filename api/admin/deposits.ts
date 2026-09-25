@@ -51,7 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { data: deposit, error: depError } = await sb.from('payments').select('*').eq('id', depositId).maybeSingle();
       if (depError) throw depError;
       if (!deposit) return json(res, { ok: false, error: 'Deposit not found.' }, 404);
-      if (deposit.status === 'completed' || deposit.status === 'rejected') {
+      if (deposit.status === 'completed' || deposit.status === 'rejected' || deposit.status === 'confirmed') {
         return json(res, { ok: false, error: 'Already processed.' }, 400);
       }
 
@@ -95,7 +95,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const reward = await calculateReferralReward(sb);
           const { data: depositor } = await sb.from('profiles').select('referrer').eq('email', email).maybeSingle();
           if (depositor?.referrer) {
-            const { data: referrer } = await sb.from('profiles').select('email, name').eq('referral_code', depositor.referrer).maybeSingle();
+            const { data: referrer } = await sb.from('profiles').select('email, name').ilike('referral_code', String(depositor.referrer)).maybeSingle();
             if (referrer && referrer.email !== email) {
               await creditUser(referrer.email, reward, {
                 title: 'Referral Bonus',

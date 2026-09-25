@@ -17,6 +17,7 @@ export interface UserProfile {
   avatarUrl?: string;
   xenaId: string;
   xenaCode: string;
+  referralCode: string;
   twoFactorEnabled: boolean;
   pinSet: boolean;
   verifiedAccountsCount: number;
@@ -190,6 +191,7 @@ export interface StoreUser {
   email: string;
   xenaId: string;
   xenaCode: string;
+  referralCode: string;
   kycTier: string;
   joined: string;
   status: 'active' | 'frozen';
@@ -269,6 +271,7 @@ export interface Account extends RegisteredUserRecord {
   id: string;
   xenaId: string;
   xenaCode: string;
+  referralCode: string;
   kycTier: string;
   status: string;
   joined: string;

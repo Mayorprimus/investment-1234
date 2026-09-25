@@ -33,7 +33,7 @@ import {
   SEED_DEPOSITS,
   SEED_REFERRALS,
 } from './pages/AdminPanel';
-import { getState, saveState, registerAccount, loginAccount, saveAccount, changeAccountPassword, getAuthToken, adjustUserBalance, submitP2POffer, approveP2POffer, rejectP2POffer, submitP2PPayment, approveP2PPayment, rejectP2PPayment, setXenaPrice, deleteUserAccount, stakeVault, claimYield, getMyState, moveP2POffer, updateLimits, adminRestartInvestment, adminCancelInvestment, adminPayoutInvestment, adminPayoutAllVaults, adminUpdateVault, adminAddVault, adminDeleteVault, adminDecideWithdrawal, redeemPromoCode, logout, adminGetTaskSubmissions, adminReviewTask, adminAddTask, adminGetAllTasks, adminDeleteTask, adminUpdateUserStatus } from './lib/api';
+import { getState, saveState, registerAccount, loginAccount, saveAccount, changeAccountPassword, getAuthToken, adjustUserBalance, submitP2POffer, approveP2POffer, rejectP2POffer, submitP2PPayment, approveP2PPayment, rejectP2PPayment, setXenaPrice, deleteUserAccount, stakeVault, claimYield, getMyState, moveP2POffer, updateLimits, adminRestartInvestment, adminCancelInvestment, adminPayoutInvestment, adminPayoutAllVaults, adminUpdateVault, adminAddVault, adminDeleteVault, adminDecideWithdrawal, redeemPromoCode, logout, adminGetTaskSubmissions, adminReviewTask, adminAddTask, adminGetAllTasks, adminDeleteTask, adminUpdateUserStatus, claimReferral, getMyReferralStats } from './lib/api';
 import { sb, mapProfileToAccount } from './lib/supabase';
 
 // Layout Components
@@ -112,6 +112,22 @@ export default function App() {
     () => accounts.map((a) => ({ name: a.name, email: a.email, country: a.country, phone: a.phone, dob: a.dob, referrer: a.referrer })),
     [accounts]
   );
+
+  // The signed-in user's own unique referral code + how many people signed up with it.
+  const [myReferralCount, setMyReferralCount] = useState(0);
+
+  const refreshReferralStats = useCallback(async () => {
+    if (!getAuthToken()) return;
+    try {
+      const stats = await getMyReferralStats();
+      if (stats.referralCode) {
+        setMyReferralCount(stats.count);
+        setUser((prev) => (prev && prev.referralCode ? prev : { ...prev, referralCode: stats.referralCode }));
+      }
+    } catch {
+      // ignore transient failures
+    }
+  }, []);
 
   // Only approved listings appear in the public marketplace.
   const visibleP2POffers = useMemo(
@@ -216,6 +232,23 @@ export default function App() {
       setWelcomeOpen(true);
     }
   }, [authed]);
+
+  // Deep-link: /signup?ref=UNIQUE-CODE must land straight on the signup form
+  // so the inviter's code stays in the URL for the shared referral to count.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const ref = params.get('ref');
+      if (!ref) return;
+      sb.auth.getSession().then(({ data }) => {
+        if (!data.session) {
+          setActiveTab('signup');
+        }
+      });
+    } catch {
+      // ignore malformed URLs
+    }
+  }, []);
 
   // Realtime: any public/admin table change re-syncs shared + my state so every
   // admin action (price, approval, payout, withdrawal decision…) lands live.
@@ -876,6 +909,7 @@ verifiedAccountsCount: user.verifiedAccountsCount,
       kycTier: acc.kycTier,
       xenaId: acc.xenaId,
       xenaCode: acc.xenaCode,
+      referralCode: acc.referralCode,
       twoFactorEnabled: acc.twoFactorEnabled,
       pinSet: acc.pinSet,
       verifiedAccountsCount: acc.verifiedAccountsCount,
@@ -915,6 +949,7 @@ setBalances((prev) => ({
           kycTier: result.account.kycTier || 'Staff',
           xenaId: result.account.xenaId || 'XN-ADMIN-01',
           xenaCode: result.account.xenaCode || 'xena-admin',
+          referralCode: result.account.referralCode || 'xena-admin',
         }));
       } else {
         setUser((prev) => ({ ...prev, role: 'admin', name: 'Administrator', email: 'admin12345@gmail.com' }));
@@ -925,6 +960,7 @@ setBalances((prev) => ({
     if (result.account) {
       applyAccount(result.account);
       handleNavSelect('home');
+      refreshReferralStats();
       return { ok: true };
     }
     return { ok: false, error: 'Unable to sign in. Please try again.' };
@@ -935,11 +971,16 @@ setBalances((prev) => ({
     if (!result.ok) {
       return { ok: false, error: result.error };
     }
+    // Attach the inviter's unique code so their referral counts (idempotent on the server).
+    if (data.referrer) {
+      claimReferral(data.referrer).catch(() => {});
+    }
     if (result.account) {
       applyAccount(result.account);
       setAuthed(true);
       setWelcomeOpen(true);
     }
+    refreshReferralStats();
     return { ok: true };
   };
 
@@ -964,6 +1005,8 @@ setBalances((prev) => ({
             onSelectPlan={handleSelectPlan}
             onSelectP2POffer={handleSelectP2POffer}
             onOpenSecurity={() => handleNavSelect('security')}
+            referralCode={user.referralCode || user.xenaCode || ''}
+            referralCount={myReferralCount}
             announcements={announcements}
           />
         );
@@ -1228,8 +1271,8 @@ setBalances((prev) => ({
               setBuySellMode('sell');
               setBuySellOpen(true);
             }}
-            referralCode={user.referral_code || user.xena_code || `XENA-${user.name.split(' ')[0].toUpperCase()}`}
-            referralCount={registeredUsers.filter((ru) => ru.referrer && ru.referrer.toUpperCase() === `XENA-${user.name.split(' ')[0].toUpperCase()}`).length}
+            referralCode={user.referralCode || user.xenaCode || ''}
+            referralCount={myReferralCount}
             announcements={announcements}
           />
         );

@@ -53,6 +53,17 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateSecuri
   const [activeTab, setActiveTab] = useState<'overview' | 'account' | 'security' | 'affiliate' | 'notifications' | 'appearance' | 'support'>('overview');
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
 
+  // Each user shares his own unique referral link (from their DB profile).
+  const referralLink = `https://www.xenaventureshq.online/signup?ref=${user.referralCode || user.xenaCode || ''}`;
+  const [refCopied, setRefCopied] = useState(false);
+  const copyReferralLink = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(referralLink).catch(() => {});
+    }
+    setRefCopied(true);
+    setTimeout(() => setRefCopied(false), 2000);
+  };
+
   const [supportInput, setSupportInput] = useState<string>('');
   const [supportMessages, setSupportMessages] = useState<{ from: 'user' | 'agent'; text: string; time: string }[]>([
     { from: 'agent', text: 'Hi! Welcome to XENA Customer Support. How can we help you today?', time: 'Just now' },
@@ -989,12 +1000,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateSecuri
               <p className="text-[11px] text-[#6B7280] mt-0.5">Share this link — earn 5% of your friends' trading fees forever</p>
             </div>
             <div className="flex items-center gap-2 p-3 rounded-xl bg-[#F8F7FC] border border-[#EDE9FE]">
-              <code className="flex-1 text-xs font-mono font-bold text-[#6D28D9] break-all truncate">https://xena.exchange/r/blessed509</code>
+              <code className="flex-1 text-xs font-mono font-bold text-[#6D28D9] break-all truncate">{referralLink}</code>
               <button
-                onClick={() => notify('Referral link copied to clipboard.')}
+                onClick={copyReferralLink}
                 className="px-3.5 py-2 rounded-lg bg-gradient-to-r from-[#7C3AED] to-[#DB2777] text-white text-xs font-bold hover:opacity-95 transition-all shadow-sm shadow-fuchsia-200/50 cursor-pointer"
               >
-                Copy Link
+                {refCopied ? 'Copied!' : 'Copy Link'}
               </button>
             </div>
             <div className="grid grid-cols-2 gap-2 text-center text-[10px]">

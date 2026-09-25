@@ -532,12 +532,34 @@ export const AdminPanel: React.FC<Props> = ({
 
   const referredRegistrations = registeredUsers.filter((ru) => ru.referrer);
   const referralRewardPerDeposit = calculateReferralReward(xenaPrice);
-  const referralOverview = referrals.map((r) => {
-    const matched = referredRegistrations.filter((ru) => ru.referrer.toUpperCase() === r.refCode.toUpperCase());
+  // Derive the overview from REAL referrals: every registered account that signed
+  // up under a unique code, resolved back to that code's owner (the referrer).
+  const referrerOwnerByCode = new Map<string, { name: string; email: string }>();
+  (accounts || []).forEach((a: any) => {
+    if (a.referralCode) {
+      referrerOwnerByCode.set(String(a.referralCode).toLowerCase(), { name: a.name, email: a.email });
+    }
+  });
+  const referredByCode = new Map<string, typeof referredRegistrations>();
+  referredRegistrations.forEach((ru) => {
+    const code = String(ru.referrer || '').toLowerCase();
+    if (!code) return;
+    const list = referredByCode.get(code) || [];
+    list.push(ru);
+    referredByCode.set(code, list);
+  });
+  const referralOverview = Array.from(referredByCode.entries()).map(([code, matched]) => {
+    const owner = referrerOwnerByCode.get(code);
     const deposited = matched.filter((ru) => deposits.some((d) => d.email.toLowerCase() === ru.email.toLowerCase()));
-    const bonusCount = matched.length + deposited.length;
-    const earnedXena = deposited.length * referralRewardPerDeposit;
-    return { ...r, newCount: matched.length, depositedCount: deposited.length, earnedXena };
+    return {
+      id: `ref-${code}`,
+      name: owner?.name || `Inviter (${code})`,
+      refCode: code,
+      count: matched.length,
+      newCount: 0,
+      depositedCount: deposited.length,
+      earnedXena: deposited.length * referralRewardPerDeposit,
+    };
   });
   const referralBonusTotal = referralOverview.reduce((s, r) => s + r.earnedXena, 0);
 

@@ -1,4 +1,4 @@
-import { UserProfile, UserBalances, MarketStats, Transaction, InvestmentPlan, P2POffer, NotificationItem, MarketNewsItem, VaultPackage, StoreUser, EscrowCredit, PromoCode, AuditLogEntry, Announcement } from '../types';
+﻿import { UserProfile, UserBalances, MarketStats, Transaction, InvestmentPlan, P2POffer, NotificationItem, MarketNewsItem, VaultPackage, StoreUser, EscrowCredit, PromoCode, AuditLogEntry, Announcement } from '../types';
 
 export const INITIAL_USER_PROFILE: UserProfile = {
   name: 'Alex Morgan',
@@ -7,6 +7,7 @@ export const INITIAL_USER_PROFILE: UserProfile = {
   kycTier: 'Tier 2 (Verified)',
   xenaId: 'XN-8492048',
   xenaCode: 'xena-19274404',
+  referralCode: 'xena-19274404',
   twoFactorEnabled: true,
   pinSet: true,
   verifiedAccountsCount: 3,
@@ -14,7 +15,7 @@ export const INITIAL_USER_PROFILE: UserProfile = {
 
 export const INITIAL_BALANCES: UserBalances = {
   totalXena: 2850.50,
-  usdRate: 0.0002, // 1 XENA ≈ $0.0002 USD (mirrors market price)
+  usdRate: 0.0002, // 1 XENA â‰ˆ $0.0002 USD (mirrors market price)
   change24hAmount: 320.50,
   change24hPercent: 12.65,
   availableXena: 2850.50,
@@ -261,7 +262,7 @@ export const INITIAL_P2P_OFFERS: P2POffer[] = [
 export const INITIAL_NOTIFICATIONS: NotificationItem[] = [
   {
     id: 'notif-1',
-    title: '✨ P2P Trading Activated',
+    title: 'âœ¨ P2P Trading Activated',
     message: 'Zero fee P2P trading is now available with verified merchants worldwide.',
     timestamp: '10m ago',
     read: false,
@@ -430,7 +431,7 @@ export const INITIAL_VAULT_CATALOG: VaultPackage[] = [
     duration: '2-Week Lock',
     days: 14,
     minDeposit: 100,
-    badge: '⚡ 2-Week',
+    badge: 'âš¡ 2-Week',
     risk: 'Audited Contract',
     description: 'Rapid 14-day lockup with accelerated validator yield and withdrawal at maturity.',
   },
@@ -552,6 +553,7 @@ export const INITIAL_STORE_USERS: StoreUser[] = [
     email: 'sarah.chukwu@xena.fi',
     xenaId: 'XN-9910237',
     xenaCode: 'xena-88912034',
+    referralCode: 'xena-88912034',
     kycTier: 'Tier 2 (Verified)',
     joined: 'Feb 2026',
     status: 'active',
@@ -565,6 +567,7 @@ export const INITIAL_STORE_USERS: StoreUser[] = [
     email: 'david.okafor@xena.fi',
     xenaId: 'XN-7741059',
     xenaCode: 'xena-22107519',
+    referralCode: 'xena-22107519',
     kycTier: 'Tier 1 (Basic)',
     joined: 'Jan 2026',
     status: 'active',
@@ -578,6 +581,7 @@ export const INITIAL_STORE_USERS: StoreUser[] = [
     email: 'amina.bello@xena.fi',
     xenaId: 'XN-3304788',
     xenaCode: 'xena-99841201',
+    referralCode: 'xena-99841201',
     kycTier: 'Tier 3 (VIP)', 
     joined: 'Dec 2025',
     status: 'active',

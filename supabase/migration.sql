@@ -43,8 +43,31 @@ create table if not exists public.profiles (
 alter table public.profiles add column if not exists bank_details jsonb not null default '[]'::jsonb;
 alter table public.profiles add column if not exists wallet_addresses jsonb not null default '[]'::jsonb;
 alter table public.profiles add column if not exists referral_code text unique;
--- Populate referral_code from xena_code for existing profiles
-update public.profiles set referral_code = xena_code where referral_code is null and xena_code is not null;
+-- Populate referral_code from xena_code for existing profiles (skip duplicates, or the unique constraint would abort the migration)
+update public.profiles p
+set referral_code = p.xena_code
+where p.referral_code is null and p.xena_code is not null
+  and not exists (select 1 from public.profiles p2 where p2.referral_code = p.xena_code and p2.id <> p.id);
+
+-- Guarantee EVERY user has his own unique referral code (backfill anything still missing).
+do $$
+declare r record; v_code text; v_ok bool;
+begin
+  for r in
+    select id from public.profiles where referral_code is null or referral_code = ''
+  loop
+    v_ok := false;
+    while not v_ok loop
+      v_code := 'xena-' || lpad(floor(random() * 90000000 + 10000000)::int::text, 8, '0');
+      begin
+        update public.profiles set referral_code = v_code where id = r.id;
+        v_ok := true;
+      exception when unique_violation then
+        null;
+      end;
+    end loop;
+  end loop;
+end $$;
 
 -- Normalized per-vault investments with live progress, admin-cancel/restart support.
 create table if not exists public.investments (
@@ -249,17 +272,32 @@ create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare
   v_name text;
-  v_prefix text := 'xena-' || lpad(floor(random() * 90000000 + 10000000)::int::text, 8, '0');
+  v_ref text;
+  v_code text;
+  v_ok bool := false;
 begin
   v_name := coalesce(nullif(new.raw_user_meta_data->>'name',''), split_part(lower(new.email), '@', 1));
-  insert into public.profiles (id, email, name, xena_id, xena_code, referral_code, role)
+  -- Every user is assigned his own unique referral code (collision-safe retry).
+  while not v_ok loop
+    v_code := 'xena-' || lpad(floor(random() * 90000000 + 10000000)::int::text, 8, '0');
+    if not exists (select 1 from public.profiles where referral_code = v_code) then
+      v_ok := true;
+    end if;
+  end loop;
+  -- Capture the inviter's code (case-insensitive, validated) so referrals count.
+  v_ref := lower(coalesce(nullif(new.raw_user_meta_data->>'referrer',''), ''));
+  if v_ref <> '' and not exists (select 1 from public.profiles where lower(referral_code) = v_ref and id <> new.id and email <> lower(new.email)) then
+    v_ref := '';
+  end if;
+  insert into public.profiles (id, email, name, xena_id, xena_code, referral_code, referrer, role)
   values (
     new.id,
     lower(new.email),
     v_name,
     'XN-' || lpad((floor(random() * 8999999 + 1000000)::int)::text, 7, '0'),
-    v_prefix,
-    v_prefix,
+    v_code,
+    v_code,
+    v_ref,
     'user'
   )
   on conflict (id) do nothing;
@@ -537,6 +575,52 @@ begin
     updated_at = now()
   where id = u;
   return jsonb_build_object('ok', true);
+end $$;
+
+-- Speed up referral lookups (referrer -> referrer's referral_code).
+create index if not exists profiles_referrer_idx on public.profiles(referrer);
+
+--
+-- REFERRAL CLAIM — one-shot attribution set by the referred user, so the
+-- inviter's code is the only one ever attached to this account.
+-- Idempotent: a filled referrer is never overwritten.
+--
+
+create or replace function public.claim_referral(p_code text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  u uuid := auth.uid();
+  v_code text;
+begin
+  if u is null then return jsonb_build_object('ok', false, 'error', 'Not authenticated'); end if;
+  v_code := lower(trim(coalesce(p_code, '')));
+  if v_code = '' then return jsonb_build_object('ok', false, 'error', 'No referral code provided.'); end if;
+  if not exists (select 1 from public.profiles where lower(referral_code) = v_code and id <> u) then
+    return jsonb_build_object('ok', false, 'error', 'Invalid referral code.');
+  end if;
+  update public.profiles
+    set referrer = v_code, updated_at = now()
+    where id = u and (referrer is null or referrer = '');
+  return jsonb_build_object('ok', true);
+end $$;
+
+--
+-- MY REFERRAL STATS — the signed-in user's own unique code + how many
+-- accounts signed up under it (their referrals count).
+--
+
+create or replace function public.get_my_referral_stats()
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  u uuid := auth.uid();
+  my_code text;
+  v_count int := 0;
+begin
+  if u is null then return jsonb_build_object('ok', false, 'error', 'Not authenticated'); end if;
+  select referral_code into my_code from public.profiles where id = u;
+  if my_code is null then return jsonb_build_object('ok', true, 'referralCode', '', 'count', 0); end if;
+  select count(*) into v_count from public.profiles where lower(referrer) = lower(my_code);
+  return jsonb_build_object('ok', true, 'referralCode', my_code, 'count', v_count);
 end $$;
 
 --
@@ -1897,6 +1981,8 @@ grant execute on function public.get_public_state to anon, authenticated;
 grant execute on function public.get_my_state to authenticated;
 grant execute on function public.admin_get_state to authenticated;
 grant execute on function public.save_account_profile to authenticated;
+grant execute on function public.claim_referral to authenticated;
+grant execute on function public.get_my_referral_stats to authenticated;
 grant execute on function public.redeem_promo_code to authenticated;
 grant execute on function public.is_admin to authenticated;
 grant execute on function public.current_email to anon, authenticated;
