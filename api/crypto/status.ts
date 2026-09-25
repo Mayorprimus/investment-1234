@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireEnv, json, readJsonBody, handleError, getUserByToken, getSetting, findPendingPayment, updatePendingPayment, creditUser } from '../_lib/helpers.js';
+import { requireEnv, json, readJsonBody, handleError, getUserByToken, getSetting, findPendingPayment, updatePendingPayment, requireSupabase, appendBlobDeposit, creditPayment } from '../_lib/helpers.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -40,14 +40,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const xena = Math.round((amountFiat / price) * 10000) / 10000;
 
     await updatePendingPayment(paymentId, { status: 'confirmed', xena });
-    await creditUser(pay.email, xena, {
-      title: 'Crypto Deposit (NOWPayments)',
-      type: 'deposit',
-      paymentMethod: `NOWPayments · ${String(pay.meta?.coin || '').toUpperCase() || 'Crypto'}`,
-      counterparty: 'NOWPayments',
-      notifTitle: 'Crypto Deposit Confirmed',
-      notifMessage: `Your ${String(pay.meta?.coin || '').toUpperCase()} payment was confirmed. ${xena.toLocaleString()} XENA has been credited to your balance.`,
-    });
+    await creditPayment(paymentId, 'nowpayments', amountFiat, 'USD', xena, pay.email, pay.meta);
+
+    // Mirror to the admin Deposit Ledger so it shows as Completed.
+    try {
+      const sb = requireSupabase();
+      const { data: paymentRow } = await sb.from('payments').select('id,status').eq('reference', paymentId).maybeSingle();
+      if (paymentRow) {
+        const { data: profile } = await sb.from('profiles').select('name').eq('email', pay.email).maybeSingle();
+        await appendBlobDeposit({
+          id: paymentRow.id,
+          user: profile?.name || pay.email.split('@')[0],
+          email: pay.email,
+          method: `NOWPayments · ${String(pay.meta?.coin || '').toUpperCase() || 'Crypto'}`,
+          amount: Math.round(amountFiat / price),
+          unit: 'USD',
+          xena,
+          status: 'Completed',
+          time: 'Just now',
+          reference: paymentId,
+        });
+      }
+    } catch (e) {
+      console.warn('crypto status: admin ledger mirror failed', (e as any)?.message || e);
+    }
 
     return json(res, { ok: true, status: 'confirmed', xena: Number(xena), duplicate: false });
   } catch (e) {

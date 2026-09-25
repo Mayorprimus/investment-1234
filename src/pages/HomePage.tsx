@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, TrendingUp, ShieldCheck, Users, PiggyBank, Clock3, Wallet, Sparkles, Plus, Check, Newspaper, Calendar, Gift, Copy, UserPlus, Zap, Trophy } from 'lucide-react';
+import { ArrowRight, TrendingUp, ShieldCheck, Users, PiggyBank, Clock3, Wallet, Sparkles, Plus, Check, Newspaper, Calendar, Gift, Copy, UserPlus, Zap, Trophy, Share2, BadgePercent } from 'lucide-react';
 import { UserProfile, UserBalances, MarketStats, InvestmentPlan, Transaction, P2POffer, Announcement } from '../types';
 import { WelcomeSection } from '../components/WelcomeSection';
 import { MainBalanceCard } from '../components/MainBalanceCard';
@@ -55,9 +55,11 @@ export const HomePage: React.FC<HomePageProps> = ({
   const featuredP2POffers = p2pOffers.slice(0, 2);
   const [copied, setCopied] = React.useState(false);
 
+  const referralLink = `https://www.xenaventureshq.online/signup?ref=${referralCode}`;
+
   const copyReferral = () => {
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(referralCode).catch(() => {});
+      navigator.clipboard.writeText(referralLink).catch(() => {});
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -116,10 +118,10 @@ export const HomePage: React.FC<HomePageProps> = ({
       {/* 5. Announcement Highlight */}
       <AnnouncementCard onExploreP2P={() => onNavigateTab('p2p')} />
 
-      {/* 5.9 Refer & Earn Card — Copy referral code, 100 XENA bonus per verified ref */}
+      {/* 5.9 Refer & Earn Card — Copy link, $0.38 worth of XENA per verified referral */}
       <div className="bg-gradient-to-br from-[#1E1B4B] via-[#7C3AED] to-[#DB2777] rounded-[24px] p-5 sm:p-6 text-white shadow-lg relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="relative z-10">
           <div className="flex items-start gap-3">
             <div className="w-11 h-11 rounded-2xl bg-white/15 backdrop-blur border border-white/25 flex items-center justify-center shrink-0">
               <Gift className="w-5 h-5" />
@@ -128,27 +130,33 @@ export const HomePage: React.FC<HomePageProps> = ({
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-base sm:text-lg font-extrabold tracking-tight">Refer &amp; Earn</h3>
                 <span className="px-2 py-0.5 rounded-md bg-amber-400/90 text-[#1E1B4B] text-[9px] font-extrabold uppercase tracking-wide flex items-center gap-1">
-                  <Zap className="w-3 h-3" /> 100 XENA per verified referral
+                  <Zap className="w-3 h-3" /> $0.38 worth of XENA per verified referral
                 </span>
               </div>
-              <p className="text-[11px] text-purple-100 mt-1">Share your code. When a friend signs up <b className="text-white">and makes a deposit</b>, you both get a <b className="text-white">100 XENA bonus</b>, auto-approved instantly.</p>
+              <p className="text-[11px] text-purple-100 mt-1">Share your ref link. When a friend signs up <b className="text-white">and makes a deposit</b>, it's auto-approved instantly.</p>
               <div className="flex items-center gap-2 mt-2">
                 <Users className="w-3.5 h-3.5 text-purple-200" />
-                <span className="text-[10px] text-purple-100 font-semibold">{referralCount} verified referral{referralCount === 1 ? '' : 's'} · +{referralCount * 100} XENA earned</span>
+                <span className="text-[10px] text-purple-100 font-semibold">{referralCount} verified referral{referralCount === 1 ? '' : 's'} · earned</span>
               </div>
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+            <div className="flex items-center gap-2 bg-white/10 backdrop-blur border border-white/25 rounded-xl px-4 py-3 min-w-0">
+              <Share2 className="w-4 h-4 shrink-0 text-purple-200" />
+              <span className="font-mono font-bold text-xs sm:text-sm tracking-tight truncate min-w-0">{referralLink}</span>
+            </div>
             <div className="flex items-center gap-2 bg-white/10 backdrop-blur border border-white/25 rounded-xl px-4 py-3">
-              <Copy className="w-4 h-4 text-purple-200" />
+              <BadgePercent className="w-4 h-4 shrink-0 text-purple-200" />
               <span className="font-mono font-extrabold text-sm tracking-widest">{referralCode}</span>
             </div>
+          </div>
+          <div className="flex items-center gap-2 mt-3">
             <button
               onClick={copyReferral}
-              className={`px-4 py-3 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${copied ? 'bg-emerald-400 text-[#1E1B4B]' : 'bg-white text-[#7C3AED] hover:bg-purple-50'}`}
+              className={`px-4 py-3 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1.5 flex-1 ${copied ? 'bg-emerald-400 text-[#1E1B4B]' : 'bg-white text-[#7C3AED] hover:bg-purple-50'}`}
             >
-              {copied ? <><Check className="w-3.5 h-3.5 stroke-[3]" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy Code</>}
+              {copied ? <><Check className="w-3.5 h-3.5 stroke-[3]" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy Referral Link</>}
             </button>
           </div>
         </div>

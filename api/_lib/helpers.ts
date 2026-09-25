@@ -18,9 +18,19 @@ export async function getServiceClient() {
   return requireSupabase();
 }
 
-// Admin token check — supports both old (token only) and new (req, body) signatures
+// Admin token check — accepts token string, or {req} with body.token /
+// query.token / Authorization: Bearer header, or {req, body} where body.token.
 export async function requireAdminToken(tokenOrReq: any, body?: any): Promise<boolean> {
-  const token = typeof tokenOrReq === 'string' ? tokenOrReq : (tokenOrReq?.body?.token || '');
+  let token = '';
+  if (typeof tokenOrReq === 'string') {
+    token = tokenOrReq;
+  } else {
+    token = tokenOrReq?.body?.token || body?.token || tokenOrReq?.query?.token || '';
+    if (!token && tokenOrReq?.headers) {
+      const auth = tokenOrReq.headers['authorization'] || tokenOrReq.headers['Authorization'] || '';
+      if (auth.toLowerCase().startsWith('bearer ')) token = auth.slice(7).trim();
+    }
+  }
   if (!token) return false;
   const sb = requireSupabase();
   const { data } = await sb.auth.getUser(token);

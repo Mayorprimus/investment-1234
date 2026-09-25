@@ -605,7 +605,8 @@ export async function cryptoCheckDeposit(paymentId: string): Promise<{ ok: boole
 
 export async function adminGetDeposits(): Promise<{ ok: boolean; error?: string; deposits?: any[] }> {
   try {
-    const res = await fetch('/api/admin/deposits');
+    const token = await currentAccessToken();
+    const res = await fetch(`/api/admin/deposits${token ? `?token=${encodeURIComponent(token)}` : ''}`);
     const data = await res.json();
     return data;
   } catch {
@@ -615,10 +616,11 @@ export async function adminGetDeposits(): Promise<{ ok: boolean; error?: string;
 
 export async function adminDecideDeposit(depositId: string, decision: 'approved' | 'rejected', note?: string): Promise<{ ok: boolean; error?: string }> {
   try {
+    const token = await currentAccessToken();
     const res = await fetch('/api/admin/deposits', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ depositId, decision, note }),
+      body: JSON.stringify({ depositId, decision, note, token }),
     });
     const data = await res.json();
     return data;

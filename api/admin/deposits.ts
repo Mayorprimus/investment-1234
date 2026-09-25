@@ -69,11 +69,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ? `Your NGN deposit of ₦${amount.toLocaleString()} was approved. ${xena.toLocaleString()} XENA credited.`
           : `Your ${currency} deposit of ${amount.toLocaleString()} was approved. ${xena.toLocaleString()} XENA credited.`;
 
-        // Credit depositor via credit_payment RPC (handles welcome bonuses: ₦1,500 NGN / $10 crypto for first deposits)
-        await creditPayment(deposit.reference, provider, amount, currency, xena, email, {
-          admin_approved: true,
-          admin_note: note || null,
-        });
+        // Credit depositor via credit_payment RPC (handles welcome bonuses: ₦1,500 NGN / $10 crypto for first deposits).
+        // Fall back to creditUser if the RPC isn't deployed in the DB yet so approval ALWAYS credits the balance.
+        try {
+          await creditPayment(deposit.reference, provider, amount, currency, xena, email, {
+            admin_approved: true,
+            admin_note: note || null,
+          });
+        } catch (rpcErr) {
+          console.warn('Admin approve deposit: credit_payment RPC failed, falling back to creditUser', (rpcErr as any)?.message || rpcErr);
+          await creditUser(email, xena, {
+            title,
+            type: 'deposit',
+            paymentMethod: getProviderLabel(provider, currency),
+            counterparty: provider === 'flutterwave' ? 'Flutterwave' : 'NOWPayments',
+            reference: deposit.reference,
+            amount,
+            notifTitle,
+            notifMessage: notifMsg,
+          });
+        }
 
         // Referral bonus: credit referrer $0.38 worth of XENA
         try {

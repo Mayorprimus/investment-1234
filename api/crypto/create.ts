@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getAppUrl, requireEnv, json, readJsonBody, handleError, getUserByToken, getSetting, savePendingPayment } from '../_lib/helpers.js';
+import { getAppUrl, requireEnv, json, readJsonBody, handleError, getUserByToken, getSetting, savePendingPayment, requireSupabase, appendBlobDeposit } from '../_lib/helpers.js';
 
 const SUPPORTED_COINS: Record<string, string> = {
   usdt: 'usdttrc20',
@@ -28,6 +28,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const limits = await getSetting('limits');
     const minUsd = Number(limits?.minDepositUsd ?? 10);
     if (amountUsd < minUsd) return json(res, { ok: false, error: `Minimum deposit is $${minUsd}.` }, 400);
+
+    const priceSetting = await getSetting('price');
+    const price = Number(priceSetting?.price ?? 0.0002564);
 
     const apiKey = requireEnv('NOWPAYMENTS_API_KEY');
     const currency = SUPPORTED_COINS[coin];
@@ -66,6 +69,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       createdAt: new Date().toISOString(),
       meta: { coin, invoice_id: String(invoice.id) },
     });
+
+    // Mirror to the admin Deposit Ledger so it shows instantly as a pending payment.
+    try {
+      const sb = requireSupabase();
+      const { data: paymentRow } = await sb.from('payments').select('id,status').eq('reference', reference).maybeSingle();
+      if (paymentRow) {
+        await appendBlobDeposit({
+          id: paymentRow.id,
+          user: (user.name || email.split('@')[0]) as string,
+          email,
+          method: `NOWPayments · ${coin.toUpperCase()}`,
+          amount: amountUsd,
+          unit: 'USD',
+          xena: Math.round((amountUsd / price) * 10000) / 10000,
+          status: 'Pending',
+          time: 'Just now',
+          reference,
+        });
+      }
+    } catch (e) {
+      console.warn('crypto create: admin ledger mirror failed', (e as any)?.message || e);
+    }
 
     return json(res, {
       ok: true,
