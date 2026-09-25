@@ -53,6 +53,7 @@ import {
   MessagesSquare,
   Music,
   Linkedin,
+  RefreshCw,
 } from 'lucide-react';
 import { getSupportConversations, replySupportConversation, resolveSupportConversation, replaceAnnouncements, replacePromos, updateAdminSettings, adminGetDeposits, adminDecideDeposit, adminGetTaskSubmissions, adminReviewTask, adminAddTask, adminGetAllTasks, adminDeleteTask } from '../lib/api';
 import type { SupportConversation } from '../types';
@@ -278,6 +279,7 @@ export const AdminPanel: React.FC<Props> = ({
   const [txFilter, setTxFilter] = useState('All');
   const [depositFilter, setDepositFilter] = useState('All');
   const [ticketQuery, setTicketQuery] = useState('');
+  const [depositsLoading, setDepositsLoading] = useState(false);
 
   const [showNewAnn, setShowNewAnn] = useState(false);
   const [newAnnTitle, setNewAnnTitle] = useState('');
@@ -354,6 +356,22 @@ export const AdminPanel: React.FC<Props> = ({
     setLimitsError(null);
     notify('Deposit & withdrawal minimums updated for all users.');
   };
+
+  const loadDeposits = async () => {
+    setDepositsLoading(true);
+    try {
+      const res = await adminGetDeposits();
+      if (res.ok && res.deposits) setDeposits(res.deposits);
+    } catch (e) {
+      console.error('Failed to load deposits:', e);
+    } finally {
+      setDepositsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (section === 'deposits') loadDeposits();
+  }, [section]);
 
   const loadConversations = async () => {
     const res = await getSupportConversations();
@@ -956,10 +974,20 @@ export const AdminPanel: React.FC<Props> = ({
               <div className="bg-white border border-[#EDE9FE] rounded-2xl p-4 shadow-sm">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#EDE9FE]">
                   <h3 className="text-sm font-bold text-[#171717]">Deposit Ledger — All Money Deposited</h3>
-                  <div className="flex bg-[#F8F7FC] p-0.5 rounded-lg border border-[#EDE9FE] text-[10px] font-bold">
-                    {['All', 'Completed', 'Pending'].map((s) => (
-                      <button key={s} onClick={() => setDepositFilter(s)} className={`px-2.5 py-1 rounded-md cursor-pointer transition-all ${depositFilter === s ? 'bg-[#6D28D9] text-white' : 'text-[#6B7280] hover:text-[#171717]'}`}>{s}</button>
-                    ))}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={loadDeposits}
+                      disabled={depositsLoading}
+                      className="px-2.5 py-1 rounded-md cursor-pointer transition-all text-[10px] font-bold bg-[#F8F7FC] border border-[#EDE9FE] text-[#6B7280] hover:text-[#171717] disabled:opacity-50 flex items-center gap-1"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${depositsLoading ? 'animate-spin' : ''}`} />
+                      <span>Refresh</span>
+                    </button>
+                    <div className="flex bg-[#F8F7FC] p-0.5 rounded-lg border border-[#EDE9FE] text-[10px] font-bold">
+                      {['All', 'Completed', 'Pending'].map((s) => (
+                        <button key={s} onClick={() => setDepositFilter(s)} className={`px-2.5 py-1 rounded-md cursor-pointer transition-all ${depositFilter === s ? 'bg-[#6D28D9] text-white' : 'text-[#6B7280] hover:text-[#171717]'}`}>{s}</button>
+                      ))}
+                    </div>
                   </div>
                 </div>
                 <div className="mt-3 overflow-x-auto">

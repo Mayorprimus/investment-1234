@@ -266,7 +266,7 @@ export default function App() {
         { event: '*', schema: 'public' },
         () => {
           if (timer) clearTimeout(timer);
-          timer = setTimeout(() => refresh().catch(() => {}), 350);
+          timer = setTimeout(() => refresh().catch(() => {}), 150);
         }
       )
       .subscribe();
