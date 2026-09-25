@@ -23,6 +23,7 @@ create table if not exists public.profiles (
   referrer text default '',
   xena_id text,
   xena_code text,
+  referral_code text unique,
   kyc_tier text default 'Tier 1 (Pending)',
   status text default 'Active',
   role text not null default 'user',
@@ -41,6 +42,9 @@ create table if not exists public.profiles (
 
 alter table public.profiles add column if not exists bank_details jsonb not null default '[]'::jsonb;
 alter table public.profiles add column if not exists wallet_addresses jsonb not null default '[]'::jsonb;
+alter table public.profiles add column if not exists referral_code text unique;
+-- Populate referral_code from xena_code for existing profiles
+update public.profiles set referral_code = xena_code where referral_code is null and xena_code is not null;
 
 -- Normalized per-vault investments with live progress, admin-cancel/restart support.
 create table if not exists public.investments (
@@ -248,12 +252,13 @@ declare
   v_prefix text := 'xena-' || lpad(floor(random() * 90000000 + 10000000)::int::text, 8, '0');
 begin
   v_name := coalesce(nullif(new.raw_user_meta_data->>'name',''), split_part(lower(new.email), '@', 1));
-  insert into public.profiles (id, email, name, xena_id, xena_code, role)
+  insert into public.profiles (id, email, name, xena_id, xena_code, referral_code, role)
   values (
     new.id,
     lower(new.email),
     v_name,
     'XN-' || lpad((floor(random() * 8999999 + 1000000)::int)::text, 7, '0'),
+    v_prefix,
     v_prefix,
     'user'
   )

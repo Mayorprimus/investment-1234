@@ -1218,7 +1218,7 @@ setBalances((prev) => ({
               setBuySellMode('sell');
               setBuySellOpen(true);
             }}
-            referralCode={`XENA-${user.name.split(' ')[0].toUpperCase()}`}
+            referralCode={user.referral_code || user.xena_code || `XENA-${user.name.split(' ')[0].toUpperCase()}`}
             referralCount={registeredUsers.filter((ru) => ru.referrer && ru.referrer.toUpperCase() === `XENA-${user.name.split(' ')[0].toUpperCase()}`).length}
             announcements={announcements}
           />

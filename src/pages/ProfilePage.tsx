@@ -265,8 +265,8 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   const [showKycUpgradeModal, setShowKycUpgradeModal] = useState(false);
 
   // Referral State
-  const referralCode = 'XENA-VIP-8829';
-  const referralLink = `https://xena.network/join?ref=${referralCode}`;
+  const referralCode = user.referral_code || user.xena_code || 'XENA-REF';
+  const referralLink = `https://www.xenaventureshq.online/signup?ref=${referralCode}`;
   const [referralStats, setReferralStats] = useState({
     totalInvited: 18,
     activeStakers: 12,
