@@ -86,10 +86,10 @@ export const InvestmentDetailModal: React.FC<InvestmentDetailModalProps> = ({
                 {plan.investedAmount.toLocaleString()} <span className="text-[10px] text-[#6D28D9]">XENA</span>
               </span>
             </div>
-            <div className="p-3.5 bg-[#F8F7FC] rounded-xl border border-[#EDE9FE] text-center">
-              <span className="text-[11px] text-[#6B7280] block mb-1">Projected Return</span>
+            <div className="p-3.5 bg-emerald-50/70 rounded-xl border border-emerald-100 text-center">
+              <span className="text-[11px] text-emerald-700 font-semibold block mb-1">You Get Back</span>
               <span className="font-extrabold text-[#16A34A] text-sm md:text-base">
-                +{plan.projectedReturnPercent}% APY
+                {(plan.investedAmount * (1 + (plan.projectedReturnPercent || 0) / 100)).toLocaleString()} <span className="text-[10px]">XENA</span>
               </span>
             </div>
             <div className="p-3.5 bg-purple-50/70 rounded-xl border border-purple-100 text-center">
@@ -124,6 +124,10 @@ export const InvestmentDetailModal: React.FC<InvestmentDetailModalProps> = ({
             <div className="flex justify-between py-2 border-b border-[#EDE9FE]">
               <span className="text-[#6B7280]">Daily Reward Payout:</span>
               <span className="font-semibold text-[#171717]">+{plan.dailyYieldXena} XENA / day</span>
+            </div>
+            <div className="flex justify-between py-2 border-b border-[#EDE9FE]">
+              <span className="text-[#6B7280]">Total Return Over Lock:</span>
+              <span className="font-semibold text-[#16A34A]">+{plan.projectedReturnPercent}%</span>
             </div>
             <div className="flex justify-between py-2 border-b border-[#EDE9FE]">
               <span className="text-[#6B7280]">Principal Protection:</span>

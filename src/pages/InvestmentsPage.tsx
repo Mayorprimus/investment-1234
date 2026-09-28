@@ -33,12 +33,15 @@ const defaultMeta = { label: 'Investment Plan', accent: 'bg-purple-50 text-[#6D2
 const FX_RATES: Record<string, number> = { USD: 1, EUR: 0.92, GBP: 0.79, NGN: 1330 };
 const FX_SYMBOLS: Record<string, string> = { USD: '$', EUR: '€', GBP: '£', NGN: '₦' };
 
+// Mirrors supabase vault_catalog (min_deposit XENA → USD at $0.0002).
+// APY = full return over the lock term, so the "You Get Back" total shown on
+// each card is principal × (1 + apy/100). Daily yield = apy / term days.
 const catalogPlans = [
   {
     id: 'cat-flex',
     name: 'Micro Starter',
     category: 'Flexible',
-    apy: 16.67,
+    apy: 112.67,
     duration: '30-Day Lock',
     days: 30,
     priceUsd: 3,
@@ -50,61 +53,61 @@ const catalogPlans = [
     id: 'cat-2wk-sprint',
     name: '2-Week Sprint',
     category: '2-Week (14D)',
-    apy: 20.0,
+    apy: 130.0,
     duration: '30-Day Lock',
     days: 30,
     priceUsd: 10,
     badge: '⚡ 2-Week',
     risk: 'Audited',
-    description: 'A fast 14-day lock with a friendly APY boost on your starter amount.',
+    description: 'A friendly APY boost on your starter amount. Funds unlock after the 30-day lock.',
   },
   {
     id: 'cat-2wk-surge',
     name: '2-Week Surge',
     category: '2-Week (14D)',
-    apy: 24.0,
+    apy: 150.0,
     duration: '30-Day Lock',
     days: 30,
     priceUsd: 15,
     badge: 'High Yield',
     risk: 'Protected',
-    description: 'Proof-of-stake delegation with 14-day compounding and payout at maturity.',
+    description: 'Proof-of-stake delegation with compounding and payout at maturity (30-day lock).',
   },
   {
     id: 'cat-30d',
     name: '30-Day Growth',
     category: 'Fixed Term',
-    apy: 28.0,
+    apy: 170.0,
     duration: '30-Day Lock',
     days: 30,
     priceUsd: 23,
     badge: 'Popular',
     risk: 'Audited Strategy',
-    description: 'A balanced one-month vault routing liquidity for steady amplified yield.',
+    description: 'A balanced vault routing liquidity for steady amplified yield. 30-day lock.',
   },
   {
     id: 'cat-45d',
     name: '45-Day Momentum',
     category: 'Fixed Term',
-    apy: 34.0,
+    apy: 190.0,
     duration: '30-Day Lock',
     days: 30,
     priceUsd: 35,
     badge: 'Trending',
     risk: 'Hedged',
-    description: 'A mid-term play blending validator yield with defensive hedging.',
+    description: 'A mid-term play blending validator yield with defensive hedging. 30-day lock.',
   },
   {
     id: 'cat-90d',
     name: 'VIP Boost',
     category: 'VIP Tier',
-    apy: 42.0,
+    apy: 213.0,
     duration: '30-Day Lock',
     days: 30,
     priceUsd: 40,
     badge: 'High APY',
     risk: 'Protected',
-    description: 'The top tier — institutional revenue share with maximum compounding power.',
+    description: 'The top tier — institutional revenue share with maximum compounding power. 30-day lock.',
   },
 ];
 
@@ -378,13 +381,16 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
                 </div>
 
                 {/* Gets back: principal + projected yield at maturity */}
-                <div className="mb-3 border border-[#EDE9FE] rounded-lg bg-gradient-to-r from-purple-50/60 to-emerald-50/60 p-2">
-                  <span className="text-[9px] font-bold text-[#6B7280] uppercase tracking-wide block">You Get Back</span>
+                <div className="mb-3 border border-emerald-100 rounded-lg bg-gradient-to-r from-purple-50/60 to-emerald-50/60 p-2">
+                  <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-wide block">💰 You Get Back</span>
                   <div className="flex items-baseline justify-between gap-2 mt-1">
-                    <span className="text-[13px] font-black text-[#16A34A] font-mono">{formatFiat(maturityUsd)}</span>
+                    <span className="text-[15px] font-black text-[#16A34A] font-mono">{formatFiat(maturityUsd)}</span>
                     <span className="text-[10px] font-bold text-[#16A34A] font-mono">≈ {formatXena(maturityXena)}</span>
                   </div>
-                  <span className="block text-[9px] font-bold text-emerald-600 mt-0.5">+{formatFiat(dailyUsd)}/day · {plan.days || 30}-day lock</span>
+                  <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 mt-1">
+                    <span className="text-[9px] font-bold text-[#16A34A]">+{formatFiat(maturityUsd - plan.priceUsd)} profit</span>
+                    <span className="text-[9px] font-bold text-emerald-600">+{formatFiat(dailyUsd)}/day · {plan.days || 30}-day lock</span>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 mb-3 text-center">

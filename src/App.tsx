@@ -384,11 +384,13 @@ verifiedAccountsCount: user.verifiedAccountsCount,
   const handleBalanceChange = (amountDelta: number, newTx: Transaction) => {
     setBalances((prev) => {
       const newAvailable = Math.max(0, prev.availableXena + amountDelta);
+      // Keep Total Balance additive (invariant: total = available + invested + accrued)
+      // so it never drops back to "available" and hides staked/accrued earnings.
       return {
         ...prev,
         availableXena: newAvailable,
-        totalBalance: newAvailable,
-        totalXena: newAvailable,
+        totalBalance: Math.max(0, (prev.totalBalance || 0) + amountDelta),
+        totalXena: Math.max(0, (prev.totalXena || 0) + amountDelta),
       };
     });
     setTransactions((prev) => [newTx, ...prev]);
