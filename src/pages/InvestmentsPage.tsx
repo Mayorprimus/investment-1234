@@ -45,6 +45,7 @@ const catalogPlans = [
     duration: '30-Day Lock',
     days: 30,
     priceUsd: 3,
+    minDepositXena: 15000,
     badge: 'Instant Redeem',
     risk: 'Low Risk',
     description: 'A tiny low-pressure entry point. Yield compounds daily; funds unlock after the 30-day lock.',
@@ -57,6 +58,7 @@ const catalogPlans = [
     duration: '30-Day Lock',
     days: 30,
     priceUsd: 10,
+    minDepositXena: 50000,
     badge: '⚡ 2-Week',
     risk: 'Audited',
     description: 'A friendly APY boost on your starter amount. Funds unlock after the 30-day lock.',
@@ -69,6 +71,7 @@ const catalogPlans = [
     duration: '30-Day Lock',
     days: 30,
     priceUsd: 15,
+    minDepositXena: 75000,
     badge: 'High Yield',
     risk: 'Protected',
     description: 'Proof-of-stake delegation with compounding and payout at maturity (30-day lock).',
@@ -81,6 +84,7 @@ const catalogPlans = [
     duration: '30-Day Lock',
     days: 30,
     priceUsd: 23,
+    minDepositXena: 115000,
     badge: 'Popular',
     risk: 'Audited Strategy',
     description: 'A balanced vault routing liquidity for steady amplified yield. 30-day lock.',
@@ -93,6 +97,7 @@ const catalogPlans = [
     duration: '30-Day Lock',
     days: 30,
     priceUsd: 35,
+    minDepositXena: 175000,
     badge: 'Trending',
     risk: 'Hedged',
     description: 'A mid-term play blending validator yield with defensive hedging. 30-day lock.',
@@ -105,6 +110,7 @@ const catalogPlans = [
     duration: '30-Day Lock',
     days: 30,
     priceUsd: 40,
+    minDepositXena: 200000,
     badge: 'High APY',
     risk: 'Protected',
     description: 'The top tier — institutional revenue share with maximum compounding power. 30-day lock.',
@@ -142,7 +148,6 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
   const fxRate = FX_RATES[currency] ?? 1;
   const fxSymbol = FX_SYMBOLS[currency] ?? '$';
   const formatFiat = (usd: number, dp = 2) => `${fxSymbol}${(usd * fxRate).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}`;
-  const formatXena = (usd: number) => `${(usd / xenaUsdPrice).toLocaleString(undefined, { maximumFractionDigits: 4 })} XENA`;
 
   const notifyStake = (planName: string) => {
     setStakedNotice(`${planName} activated — its progress now shows in your Staking Performance card above.`);
@@ -167,6 +172,7 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
           duration: v.duration,
           days: v.days,
           priceUsd: v.minDeposit * xenaUsdPrice,
+          minDepositXena: Number(v.minDeposit || 0),
           badge: v.badge,
           risk: v.risk,
           description: v.description,
@@ -352,12 +358,16 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
             const meta = CATEGORY_META[plan.category] || defaultMeta;
             // Prevent buying a package that is already active (dedupe by name)
             const alreadyActive = plans.some((p) => p.name === plan.name);
-            const xenaQty = plan.priceUsd / xenaUsdPrice;
+            const xenaUsd = Math.max(0.0001, xenaUsdPrice);
+            // XENA cost comes straight from the catalog's min_deposit (no
+            // money→XENA division), so stale/garbled prices can never turn a
+            // few dollars into millions of XENA on the card.
+            const costXena = plan.minDepositXena || (plan.priceUsd / xenaUsd);
             // Maturity value: APY is the full return over the lock term, so
             // principal grows by exactly apy% over the lock (e.g. $3 → $6.38
             // on the 112.67% Micro Starter). Daily = apy% / term days.
             const maturityUsd = plan.priceUsd * (1 + (plan.apy || 0) / 100);
-            const maturityXena = maturityUsd / xenaUsdPrice;
+            const maturityXena = costXena * (1 + (plan.apy || 0) / 100);
             const dailyUsd = plan.priceUsd * (plan.apy || 0) / 100 / (plan.days || 30);
             return (
               <div key={plan.id} className="group relative bg-white border border-[#EDE9FE] rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all flex flex-col p-4">
@@ -376,7 +386,7 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
                     <span className="text-[9px] text-[#6B7280]">/ package</span>
                   </div>
                   <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md bg-[#F8F7FC] border border-[#EDE9FE] text-[10px] font-bold text-[#6D28D9]">
-                    ≈ {formatXena(plan.priceUsd)}
+                    ≈ {costXena.toLocaleString()} XENA
                   </span>
                 </div>
 
@@ -385,7 +395,7 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
                   <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-wide block">💰 You Get Back</span>
                   <div className="flex items-baseline justify-between gap-2 mt-1">
                     <span className="text-[15px] font-black text-[#16A34A] font-mono">{formatFiat(maturityUsd)}</span>
-                    <span className="text-[10px] font-bold text-[#16A34A] font-mono">≈ {formatXena(maturityXena)}</span>
+                    <span className="text-[10px] font-bold text-[#16A34A] font-mono">≈ {maturityXena.toLocaleString(undefined, { maximumFractionDigits: 0 })} XENA</span>
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 mt-1">
                     <span className="text-[9px] font-bold text-[#16A34A]">+{formatFiat(maturityUsd - plan.priceUsd)} profit</span>
@@ -410,7 +420,7 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
                       id: plan.id,
                       name: plan.name,
                       category: plan.category,
-                      investedAmount: xenaQty,
+                      investedAmount: costXena,
                       earnedAmount: 0,
                       projectedReturnPercent: plan.apy,
                       daysRemaining: plan.days,
@@ -425,7 +435,7 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
                   {alreadyActive ? (
                     <><Check className="w-3.5 h-3.5" /> Already Active</>
                   ) : (
-                    <><Plus className="w-3.5 h-3.5" /> Stake {formatXena(plan.priceUsd)}</>
+                    <><Plus className="w-3.5 h-3.5" /> Stake {costXena.toLocaleString()} XENA</>
                   )}
                 </button>
               </div>
