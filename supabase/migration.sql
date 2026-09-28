@@ -514,7 +514,7 @@ exception when duplicate_object then null; end $$;
 --
 
 create or replace function public.get_public_state()
-returns jsonb language plpgsql stable as $$
+returns jsonb language plpgsql volatile as $$
 declare
   v_price numeric;
   v_rate numeric;
@@ -525,6 +525,12 @@ declare
   v_offers jsonb;
   v_escrow jsonb;
 begin
+  -- Auto daily yield tick: the first app request each day accrues earnings
+  -- for every active vault (the 23h guard in accrue_investments makes this
+  -- idempotent, so page loads never double-credit). Never blocks the state.
+  begin
+    perform public.accrue_investments();
+  exception when others then null; end;
   select (value->>'price')::numeric into v_price from public.xena_settings where key = 'price';
   if v_price is null then v_price := 0.0002; end if;
   select (value->>'ngnRate')::numeric into v_rate from public.xena_settings where key = 'xena_ngn_rate';
@@ -1521,11 +1527,12 @@ begin
   return jsonb_build_object('ok', true, 'amount', v_amount);
 end $$;
 
--- Daily progress tick (run by /api/cron/accrue or the admin "Run Yield Tick"
+-- Daily progress tick (fired automatically by the first get_public_state
+-- request each day, by /api/cron/accrue, or by the admin "Run Yield Tick"
 -- button): decrement the day counter by full 24h periods elapsed since
 -- last_accrued_at, accrue apy% / term-days per day, credit that earnings into
 -- the owner's totalBalance (so progress visibly lands in "Total Balance"), and
--- mature finished vaults. The 23-hour guard makes cron + manual runs coexist.
+-- mature finished vaults. The 23-hour guard makes every entry point coexist.
 create or replace function public.accrue_investments()
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
@@ -2218,7 +2225,7 @@ grant execute on function public.admin_decide_withdrawal to authenticated;
 
 grant execute on function public.user_stake_vault to authenticated;
 grant execute on function public.user_claim_yield to authenticated;
-grant execute on function public.accrue_investments to service_role;
+grant execute on function public.accrue_investments to service_role, anon, authenticated;
 grant execute on function public.admin_accrue_investments to authenticated;
 grant execute on function public.admin_restart_investment to authenticated;
 grant execute on function public.admin_cancel_investment to authenticated;
