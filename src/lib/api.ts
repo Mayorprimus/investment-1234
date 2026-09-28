@@ -540,6 +540,15 @@ export async function adminPayoutAllVaults(): Promise<{ ok: boolean; error?: str
   }
 }
 
+export async function adminAccrueInvestments(): Promise<{ ok: boolean; error?: string; processed?: number }> {
+  try {
+    const res = await callRpc<any>('admin_accrue_investments');
+    return res?.ok ? { ok: true, processed: Number(res.processed || 0) } : { ok: false, error: res?.error || 'Yield tick failed.' };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Network error.' };
+  }
+}
+
 // ---------- Vault Catalog (admin) ----------
 export async function adminUpdateVault(vaultId: string, updates: Record<string, unknown>): Promise<{ ok: boolean; error?: string; vault?: any }> {
   try {
@@ -792,8 +801,8 @@ export async function adminGetAllTasks(): Promise<{ ok: boolean; error?: string;
   }
 }
 
-// Calculate referral reward based on current XENA price ($0.38 worth)
-export function calculateReferralReward(xenaPriceUsd: number): number {
-  if (!xenaPriceUsd || xenaPriceUsd <= 0) return 1900; // fallback at $0.0002
-  return Math.round(0.38 / xenaPriceUsd);
+// Calculate referral reward based on the current XENA NGN rate (₦800 worth)
+export function calculateReferralReward(xenaNgnRate: number = 0.266): number {
+  if (!xenaNgnRate || xenaNgnRate <= 0) return 3008; // fallback at ₦0.266
+  return Math.round(800 / xenaNgnRate);
 }

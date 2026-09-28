@@ -255,9 +255,9 @@ export async function updateBlobDeposit(matchId: string, patch: any): Promise<vo
   await setAdminBlob({ ...blob, deposits: next });
 }
 
-// Referral reward calculation - $0.38 worth of XENA
+// Referral reward calculation - ₦800 worth of XENA (per the NGN rate)
 export async function calculateReferralReward(sb: any): Promise<number> {
-  const { data } = await sb.from('xena_settings').select('value').eq('key', 'price').maybeSingle();
-  const price = Number(data?.value?.price ?? 0.0002);
-  return Math.round(0.38 / price); // 1,900 at $0.0002
+  const { data } = await sb.from('xena_settings').select('value').eq('key', 'xena_ngn_rate').maybeSingle();
+  const rate = Number(data?.value?.ngnRate ?? 0.266);
+  return Math.round(800 / rate); // ≈3,008 at ₦0.266
 }

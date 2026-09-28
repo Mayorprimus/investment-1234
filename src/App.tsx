@@ -33,7 +33,7 @@ import {
   SEED_DEPOSITS,
   SEED_REFERRALS,
 } from './pages/AdminPanel';
-import { getState, saveState, registerAccount, loginAccount, saveAccount, changeAccountPassword, getAuthToken, adjustUserBalance, submitP2POffer, approveP2POffer, rejectP2POffer, submitP2PPayment, approveP2PPayment, rejectP2PPayment, setXenaPrice, deleteUserAccount, stakeVault, claimYield, getMyState, moveP2POffer, updateLimits, adminRestartInvestment, adminCancelInvestment, adminPayoutInvestment, adminPayoutAllVaults, adminUpdateVault, adminAddVault, adminDeleteVault, adminDecideWithdrawal, redeemPromoCode, logout, adminGetTaskSubmissions, adminReviewTask, adminAddTask, adminGetAllTasks, adminDeleteTask, adminUpdateUserStatus, claimReferral, getMyReferralStats } from './lib/api';
+import { getState, saveState, registerAccount, loginAccount, saveAccount, changeAccountPassword, getAuthToken, adjustUserBalance, submitP2POffer, approveP2POffer, rejectP2POffer, submitP2PPayment, approveP2PPayment, rejectP2PPayment, setXenaPrice, deleteUserAccount, stakeVault, claimYield, getMyState, moveP2POffer, updateLimits, adminRestartInvestment, adminCancelInvestment, adminPayoutInvestment, adminPayoutAllVaults, adminAccrueInvestments, adminUpdateVault, adminAddVault, adminDeleteVault, adminDecideWithdrawal, redeemPromoCode, logout, adminGetTaskSubmissions, adminReviewTask, adminAddTask, adminGetAllTasks, adminDeleteTask, adminUpdateUserStatus, claimReferral, getMyReferralStats } from './lib/api';
 import { sb, mapProfileToAccount } from './lib/supabase';
 
 // Layout Components
@@ -628,6 +628,18 @@ verifiedAccountsCount: user.verifiedAccountsCount,
     setAllInvestments((prev) =>
       prev.map((i) => (i.status === 'matured' ? { ...i, status: 'active', progress_percent: 0 } : i))
     );
+    return res;
+  };
+
+  const handleAccrueNow = async (): Promise<{ ok: boolean; error?: string; processed?: number }> => {
+    const res = await adminAccrueInvestments();
+    if (!res.ok) return res;
+    try {
+      const state = await getState();
+      if (state?.investments) setAllInvestments(state.investments);
+    } catch {
+      // refresh is best-effort; the next realtime tick will catch up anyway
+    }
     return res;
   };
 
@@ -1232,6 +1244,7 @@ setBalances((prev) => ({
             onCancelInvestment={handleCancelInvestment}
             onPayoutInvestment={handlePayoutInvestment}
             onPayoutAllVaults={handlePayoutAllVaults}
+            onAccrueNow={handleAccrueNow}
             vaultCatalog={vaultCatalog}
             onUpdateVault={handleUpdateVault}
             onAddVault={handleAddVault}

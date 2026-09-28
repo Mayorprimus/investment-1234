@@ -15,15 +15,15 @@ on conflict (key) do update set value = excluded.value;
 -- 2) ZERO-FEE P2P LISTINGS — one price rule for the whole site ------
 update public.p2p_offers set price_per_xena = 0.0002;
 
--- 3) VAULT CATALOG — USD-derived min_deposit (min_deposit = priceUsd / price)
---    Micro Starter APY → 16.67%. All plans are 30-day lock. ------
+-- 3) VAULT CATALOG — USD-derived min_deposit (min_deposit = priceUsd / price).
+--    APY = total return over the 30-day lock ($3 Micro Starter pays $6.38 back). ------
 insert into public.vault_catalog (id, name, category, apy, duration, days, min_deposit, badge, risk, description, active, sort_order) values
-  ('cat-flex',    'Micro Starter',  'Flexible',      16.67, '30-Day Lock', 30, 15000,  'Instant Redeem', 'Low Risk',   'A tiny low-pressure entry point. Yield compounds daily; funds unlock after the 30-day lock.', true, 1),
-  ('cat-2wk-sprint','2-Week Sprint','2-Week (14D)',  20.0, '30-Day Lock', 30, 50000,  '⚡ 2-Week',      'Audited',    'A friendly APY boost on your starter amount. Funds unlock after the 30-day lock.', true, 2),
-  ('cat-2wk-surge','2-Week Surge',  '2-Week (14D)',  24.0, '30-Day Lock', 30, 75000,  'High Yield',     'Protected',  'Proof-of-stake delegation with compounding and payout at maturity (30-day lock).', true, 3),
-  ('cat-30d',     '30-Day Growth',  'Fixed Term',    28.0, '30-Day Lock', 30, 115000, 'Popular',        'Audited Strategy', 'A balanced vault routing liquidity for steady amplified yield. 30-day lock.', true, 4),
-  ('cat-45d',     '45-Day Momentum','Fixed Term',    34.0, '30-Day Lock', 30, 175000, 'Trending',       'Hedged',     'A mid-term play blending validator yield with defensive hedging. 30-day lock.', true, 5),
-  ('cat-90d',     'VIP Boost',      'VIP Tier',      42.0, '30-Day Lock', 30, 200000, 'High APY',       'Protected',  'The top tier — institutional revenue share with maximum compounding power. 30-day lock.', true, 6)
+  ('cat-flex',    'Micro Starter',  'Flexible',      112.67, '30-Day Lock', 30, 15000,  'Instant Redeem', 'Low Risk',   'A tiny low-pressure entry point. Yield compounds daily; funds unlock after the 30-day lock.', true, 1),
+  ('cat-2wk-sprint','2-Week Sprint','2-Week (14D)',  130.0, '30-Day Lock', 30, 50000,  '⚡ 2-Week',      'Audited',    'A friendly APY boost on your starter amount. Funds unlock after the 30-day lock.', true, 2),
+  ('cat-2wk-surge','2-Week Surge',  '2-Week (14D)',  150.0, '30-Day Lock', 30, 75000,  'High Yield',     'Protected',  'Proof-of-stake delegation with compounding and payout at maturity (30-day lock).', true, 3),
+  ('cat-30d',     '30-Day Growth',  'Fixed Term',    170.0, '30-Day Lock', 30, 115000, 'Popular',        'Audited Strategy', 'A balanced vault routing liquidity for steady amplified yield. 30-day lock.', true, 4),
+  ('cat-45d',     '45-Day Momentum','Fixed Term',    190.0, '30-Day Lock', 30, 175000, 'Trending',       'Hedged',     'A mid-term play blending validator yield with defensive hedging. 30-day lock.', true, 5),
+  ('cat-90d',     'VIP Boost',      'VIP Tier',      213.0, '30-Day Lock', 30, 200000, 'High APY',       'Protected',  'The top tier — institutional revenue share with maximum compounding power. 30-day lock.', true, 6)
 on conflict (id) do update set
   name = excluded.name, category = excluded.category, apy = excluded.apy,
   duration = excluded.duration, days = excluded.days, min_deposit = excluded.min_deposit,
@@ -72,7 +72,9 @@ begin
   return jsonb_build_object('ok', true, 'price', p, 'xenaNgnRate', r);
 end $$;
 
--- user_stake_vault: one purchase per plan (duplicate-stake guard).
+-- user_stake_vault: one purchase per plan (duplicate-stake guard). APY is the
+-- total return over the lock term; total balance is NOT reduced (principal stays
+-- counted in totalBalance), so the daily accrual visibly grows total balance.
 create or replace function public.user_stake_vault(p_vault_id text)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
@@ -116,21 +118,17 @@ begin
   );
   update public.profiles set
     balances = jsonb_set(
-      jsonb_set(
-        jsonb_set(balances, '{availableXena}', ((balances->>'availableXena')::numeric - v_amt)::numeric::text::jsonb),
-        '{investedXena}',
-        ((balances->>'investedXena')::numeric + v_amt)::numeric::text::jsonb
-      ),
-      '{totalBalance}',
-      (greatest(0, (balances->>'totalBalance')::numeric - v_amt))::numeric::text::jsonb
+      jsonb_set(balances, '{availableXena}', ((balances->>'availableXena')::numeric - v_amt)::numeric::text::jsonb),
+      '{investedXena}',
+      ((balances->>'investedXena')::numeric + v_amt)::numeric::text::jsonb
     ),
     transactions = jsonb_build_array(tx) || transactions,
     notifications = jsonb_build_array(notif) || notifications,
     updated_at = now()
   where id = u;
 
-  insert into public.investments (user_id, email, user_name, plan_name, category, invested_xena, apy, total_days, days_remaining, progress_percent, status, started_at)
-  values (u, p.email, p.name, v_cat.name, v_cat.category, v_amt, v_cat.apy, v_cat.days, v_cat.days, 0, 'active', now());
+  insert into public.investments (user_id, email, user_name, plan_name, category, invested_xena, apy, daily_yield_xena, total_days, days_remaining, progress_percent, status, started_at, last_accrued_at)
+  values (u, p.email, p.name, v_cat.name, v_cat.category, v_amt, v_cat.apy, round(coalesce(v_cat.apy, 0) * v_amt / 100.0 / greatest(v_cat.days, 1), 6), v_cat.days, v_cat.days, 0, 'active', now(), now());
 
   return jsonb_build_object('ok', true, 'investment', (select to_jsonb(i) from public.investments i
     where i.user_id = u order by i.created_at desc limit 1));

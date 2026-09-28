@@ -118,6 +118,34 @@ create table if not exists public.investments (
 create index if not exists investments_user_idx on public.investments(user_id);
 create index if not exists investments_status_idx on public.investments(status);
 
+-- Per-day yield (shown as "N XENA / day" and "You Get Back") and the last time the
+-- daily tick ran for a position. accrue_investments is guard-gated on last_accrued_at.
+alter table public.investments add column if not exists daily_yield_xena numeric default 0;
+alter table public.investments add column if not exists last_accrued_at timestamptz;
+
+-- Backfill existing stakes so per-day yield and catch-up accrual work immediately.
+-- APY is the total return over the full lock term (e.g. 112.67% on a $3 plan pays
+-- $6.38 back at maturity), so the daily rate = apy% / term days.
+update public.investments set
+  daily_yield_xena = round(coalesce(apy, 0) * coalesce(invested_xena, 0) / 100.0 / greatest(total_days, 1), 6),
+  last_accrued_at = now()
+where status = 'active' and coalesce(daily_yield_xena, 0) = 0 and coalesce(apy, 0) > 0 and coalesce(invested_xena, 0) > 0;
+update public.investments set last_accrued_at = now() where status = 'active' and last_accrued_at is null;
+
+-- Normalize every profile's Total Balance to the new invariant:
+-- totalBalance = availableXena + investedXena + sum of accrued yield on stakes.
+-- (Staking no longer drops total balance; earnings accrue into it daily.)
+update public.profiles p set
+  balances = jsonb_set(
+    balances,
+    '{totalBalance}',
+    (coalesce((balances->>'availableXena')::numeric, 0)
+      + coalesce((balances->>'investedXena')::numeric, 0)
+      + coalesce((select sum(it.earned_xena) from public.investments it where it.user_id = p.id), 0))::numeric::text::jsonb
+  ),
+  updated_at = now()
+where p.balances is not null;
+
 -- Admin-editable vault catalog (the 6 seeded plans, extendable).
 create table if not exists public.vault_catalog (
   id text primary key,
@@ -863,9 +891,11 @@ create or replace function public.admin_replace_promos(items jsonb)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_promos jsonb;
+  v_items jsonb;
 begin
   if not public.is_admin() then return jsonb_build_object('ok', false, 'error', 'Admin access required.'); end if;
   if items is null or jsonb_typeof(items) <> 'array' then return jsonb_build_object('ok', false, 'error', 'Invalid payload'); end if;
+  -- Redemption store (xena_settings, read by redeem_promo_code).
   select jsonb_agg(jsonb_build_object(
     'code', upper(coalesce(e->>'code', '')),
     'rewardXena', coalesce((e->>'rewardXena')::numeric, (e->>'value')::numeric, 0),
@@ -879,6 +909,19 @@ begin
   if v_promos is null then v_promos := '[]'::jsonb; end if;
   insert into public.xena_settings(key, value) values ('promos', v_promos)
     on conflict (key) do update set value = excluded.value;
+  -- Admin portal list (admin_state.blob.promos read by admin_get_state->getState()).
+  -- Kept in the client shape (id, code, value, unit, used, cap, active) so created
+  -- codes stay visible on the portal even after a reload.
+  select jsonb_agg(e)
+  from jsonb_array_elements(items) e
+  where coalesce(e->>'code', '') <> ''
+  into v_items;
+  if v_items is null then v_items := '[]'::jsonb; end if;
+  insert into public.admin_state(id, blob, updated_at)
+  values (1, jsonb_build_object('promos', v_items), now())
+  on conflict (id) do update set
+    blob = jsonb_set(coalesce(public.admin_state.blob, '{}'::jsonb), '{promos}', excluded.blob -> 'promos'),
+    updated_at = now();
   return jsonb_build_object('ok', true, 'promos', v_promos);
 end $$;
 
@@ -1429,21 +1472,17 @@ begin
   );
   update public.profiles set
     balances = jsonb_set(
-      jsonb_set(
-        jsonb_set(balances, '{availableXena}', ((balances->>'availableXena')::numeric - v_amt)::numeric::text::jsonb),
-        '{investedXena}',
-        ((balances->>'investedXena')::numeric + v_amt)::numeric::text::jsonb
-      ),
-      '{totalBalance}',
-      (greatest(0, (balances->>'totalBalance')::numeric - v_amt))::numeric::text::jsonb
+      jsonb_set(balances, '{availableXena}', ((balances->>'availableXena')::numeric - v_amt)::numeric::text::jsonb),
+      '{investedXena}',
+      ((balances->>'investedXena')::numeric + v_amt)::numeric::text::jsonb
     ),
     transactions = jsonb_build_array(tx) || transactions,
     notifications = jsonb_build_array(notif) || notifications,
     updated_at = now()
   where id = u;
 
-  insert into public.investments (user_id, email, user_name, plan_name, category, invested_xena, apy, total_days, days_remaining, progress_percent, status, started_at)
-  values (u, p.email, p.name, v_cat.name, v_cat.category, v_amt, v_cat.apy, v_cat.days, v_cat.days, 0, 'active', now());
+  insert into public.investments (user_id, email, user_name, plan_name, category, invested_xena, apy, daily_yield_xena, total_days, days_remaining, progress_percent, status, started_at, last_accrued_at)
+  values (u, p.email, p.name, v_cat.name, v_cat.category, v_amt, v_cat.apy, round(coalesce(v_cat.apy, 0) * v_amt / 100.0 / greatest(v_cat.days, 1), 6), v_cat.days, v_cat.days, 0, 'active', now(), now());
 
   return jsonb_build_object('ok', true, 'investment', (select to_jsonb(i) from public.investments i
     where i.user_id = u order by i.created_at desc limit 1));
@@ -1474,11 +1513,7 @@ begin
     'fee', 0
   );
   update public.profiles set
-    balances = jsonb_set(
-      jsonb_set(balances, '{availableXena}', ((balances->>'availableXena')::numeric + v_amount)::numeric::text::jsonb),
-      '{totalBalance}',
-      ((balances->>'totalBalance')::numeric + v_amount)::numeric::text::jsonb
-    ),
+    balances = jsonb_set(balances, '{availableXena}', ((balances->>'availableXena')::numeric + v_amount)::numeric::text::jsonb),
     transactions = jsonb_build_array(tx) || transactions,
     updated_at = now()
   where id = u;
@@ -1486,24 +1521,58 @@ begin
   return jsonb_build_object('ok', true, 'amount', v_amount);
 end $$;
 
--- Daily progress tick (run by /api/cron/accrue): decrement day counter, accrue
--- APY/365 yield, persist progress_percent, and mature finished vaults.
+-- Daily progress tick (run by /api/cron/accrue or the admin "Run Yield Tick"
+-- button): decrement the day counter by full 24h periods elapsed since
+-- last_accrued_at, accrue apy% / term-days per day, credit that earnings into
+-- the owner's totalBalance (so progress visibly lands in "Total Balance"), and
+-- mature finished vaults. The 23-hour guard makes cron + manual runs coexist.
 create or replace function public.accrue_investments()
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare n int := 0; r int;
+declare
+  n int := 0;
+  r record;
+  v_ticks int;
+  v_daily numeric;
+  v_credit numeric;
 begin
-  for r in select id from public.investments where status = 'active' and total_days > 0 loop
+  for r in
+    select inv.* from public.investments inv
+    where inv.status = 'active' and inv.total_days > 0
+      and (inv.last_accrued_at is null or inv.last_accrued_at < now() - interval '23 hours')
+    order by inv.created_at
+  loop
+    v_ticks := floor(extract(epoch from (now() - coalesce(r.last_accrued_at, r.started_at))) / 86400.0)::int;
+    if v_ticks < 1 then continue; end if;
+    v_ticks := least(v_ticks, greatest(r.days_remaining, 1));
+    v_daily := round(coalesce(r.apy, 0) * coalesce(r.invested_xena, 0) / 100.0 / greatest(r.total_days, 1), 6);
+    v_credit := round(v_daily * v_ticks, 6);
     update public.investments set
-      days_remaining = greatest(0, days_remaining - 1),
-      earned_xena = earned_xena + (invested_xena * apy / 36500.0),
-      progress_percent = round((((total_days - greatest(days_remaining - 1, 0))::numeric) / total_days) * 100, 2),
-      status = case when days_remaining - 1 <= 0 then 'matured' else 'active' end,
-      ended_at = case when days_remaining - 1 <= 0 then now() else ended_at end,
+      days_remaining = greatest(0, days_remaining - v_ticks),
+      earned_xena = round(earned_xena + v_credit, 6),
+      daily_yield_xena = case when coalesce(daily_yield_xena, 0) <= 0 then v_daily else daily_yield_xena end,
+      progress_percent = round((((total_days - greatest(days_remaining - v_ticks, 0))::numeric) / total_days) * 100, 2),
+      status = case when days_remaining - v_ticks <= 0 then 'matured' else 'active' end,
+      ended_at = case when days_remaining - v_ticks <= 0 then now() else ended_at end,
+      last_accrued_at = now(),
       updated_at = now()
-    where id = r;
+    where id = r.id;
+    if v_credit > 0 then
+      update public.profiles set
+        balances = jsonb_set(balances, '{totalBalance}', ((balances->>'totalBalance')::numeric + v_credit)::numeric::text::jsonb),
+        updated_at = now()
+      where id = r.user_id;
+    end if;
     n := n + 1;
   end loop;
   return jsonb_build_object('ok', true, 'processed', n);
+end $$;
+
+-- Admin-triggerable wrapper so the portal can run the yield tick on demand.
+create or replace function public.admin_accrue_investments()
+returns jsonb language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then return jsonb_build_object('ok', false, 'error', 'Admin access required.'); end if;
+  return public.accrue_investments();
 end $$;
 
 create or replace function public.admin_restart_investment(p_investment_id uuid, p_note text default null)
@@ -1525,6 +1594,15 @@ begin
     'message', 'Your ' || inv.plan_name || ' vault was restarted with a fresh ' || inv.total_days || '-day term by an administrator.',
     'timestamp', 'Just now', 'read', false, 'type', 'transaction'
   );
+  -- Pending accrued yield (already counted in totalBalance) is forfeited on restart.
+  update public.profiles set
+    balances = jsonb_set(
+      balances,
+      '{totalBalance}',
+      (greatest(0, (balances->>'totalBalance')::numeric - coalesce(inv.earned_xena, 0)))::numeric::text::jsonb
+    ),
+    updated_at = now()
+  where id = inv.user_id;
   update public.profiles set notifications = jsonb_build_array(notif) || notifications where id = inv.user_id;
   return jsonb_build_object('ok', true, 'investment', (select to_jsonb(i) from public.investments i where i.id = p_investment_id));
 end $$;
@@ -1562,7 +1640,7 @@ begin
         (greatest(0, (balances->>'investedXena')::numeric - inv.invested_xena))::numeric::text::jsonb
       ),
       '{totalBalance}',
-      ((balances->>'totalBalance')::numeric + inv.invested_xena)::numeric::text::jsonb
+      (greatest(0, (balances->>'totalBalance')::numeric - coalesce(inv.earned_xena, 0)))::numeric::text::jsonb
     ),
     transactions = jsonb_build_array(tx) || transactions,
     notifications = jsonb_build_array(notif) || notifications,
@@ -1601,19 +1679,15 @@ begin
   );
   update public.profiles set
     balances = jsonb_set(
-      jsonb_set(
-        jsonb_set(balances, '{availableXena}', ((balances->>'availableXena')::numeric + v_total)::numeric::text::jsonb),
-        '{investedXena}',
-        (greatest(0, (balances->>'investedXena')::numeric - inv.invested_xena))::numeric::text::jsonb
-      ),
-      '{totalBalance}',
-      ((balances->>'totalBalance')::numeric + v_total)::numeric::text::jsonb
+      jsonb_set(balances, '{availableXena}', ((balances->>'availableXena')::numeric + v_total)::numeric::text::jsonb),
+      '{investedXena}',
+      (greatest(0, (balances->>'investedXena')::numeric - inv.invested_xena))::numeric::text::jsonb
     ),
     transactions = jsonb_build_array(tx) || transactions,
     notifications = jsonb_build_array(notif) || notifications,
     updated_at = now()
   where id = inv.user_id;
-  update public.investments set status = 'matured', ended_at = now(), admin_note = p_note, updated_at = now() where id = p_investment_id;
+  update public.investments set status = 'matured', earned_xena = 0, ended_at = now(), admin_note = p_note, updated_at = now() where id = p_investment_id;
   return jsonb_build_object('ok', true, 'paid', v_total);
 end $$;
 
@@ -2145,6 +2219,7 @@ grant execute on function public.admin_decide_withdrawal to authenticated;
 grant execute on function public.user_stake_vault to authenticated;
 grant execute on function public.user_claim_yield to authenticated;
 grant execute on function public.accrue_investments to service_role;
+grant execute on function public.admin_accrue_investments to authenticated;
 grant execute on function public.admin_restart_investment to authenticated;
 grant execute on function public.admin_cancel_investment to authenticated;
 grant execute on function public.admin_payout_investment to authenticated;

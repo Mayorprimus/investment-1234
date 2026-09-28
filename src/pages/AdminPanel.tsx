@@ -107,6 +107,7 @@ interface Props {
   onCancelInvestment?: (id: string, note?: string) => Promise<{ ok: boolean; error?: string }>;
   onPayoutInvestment?: (id: string, note?: string) => Promise<{ ok: boolean; error?: string }>;
   onPayoutAllVaults?: () => Promise<{ ok: boolean; error?: string; processed?: number }>;
+  onAccrueNow?: () => Promise<{ ok: boolean; error?: string; processed?: number }>;
   vaultCatalog?: any[];
   onUpdateVault?: (vaultId: string, updates: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
   onAddVault?: (payload: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; id?: string }>;
@@ -258,6 +259,7 @@ export const AdminPanel: React.FC<Props> = ({
   onCancelInvestment,
   onPayoutInvestment,
   onPayoutAllVaults,
+  onAccrueNow,
   vaultCatalog = [],
   onUpdateVault,
   onAddVault,
@@ -531,7 +533,7 @@ export const AdminPanel: React.FC<Props> = ({
   const pendingDepositCount = deposits.filter((d) => d.status === 'Pending').length;
 
   const referredRegistrations = registeredUsers.filter((ru) => ru.referrer);
-  const referralRewardPerDeposit = calculateReferralReward(xenaPrice);
+  const referralRewardPerDeposit = calculateReferralReward(xenaNgnRate);
   // Derive the overview from REAL referrals: every registered account that signed
   // up under a unique code, resolved back to that code's owner (the referrer).
   const referrerOwnerByCode = new Map<string, { name: string; email: string }>();
@@ -718,7 +720,7 @@ export const AdminPanel: React.FC<Props> = ({
                     <span className="w-9 h-9 rounded-xl bg-purple-50 text-[#7C3AED] flex items-center justify-center"><UserPlus className="w-4 h-4" /></span>
                     <div className="text-left">
                       <span className="block text-xs font-bold text-[#171717]">{referralBonusTotal} XENA referral bonuses</span>
-                      <span className="block text-[10px] text-[#6B7280]">View referrals — $0.38 worth of XENA auto-approved per verified deposit</span>
+                      <span className="block text-[10px] text-[#6B7280]">View referrals — ₦800 worth of XENA auto-approved per verified deposit</span>
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-[#6B7280]" />
@@ -1063,7 +1065,7 @@ export const AdminPanel: React.FC<Props> = ({
                                       if (res.ok) {
                                         setDeposits((prev) => prev.map((x) => x.id === d.id ? { ...x, status: 'Completed' } : x));
                                         if (matchedRef) {
-                                          const referralReward = calculateReferralReward(xenaPrice);
+                                          const referralReward = calculateReferralReward(xenaNgnRate);
                                           setBonusLog((prev) => [{ id: `b-${Date.now()}`, code: matchedRef.refCode, name: matchedRef.name, xena: referralReward, time: 'Just now' }, ...prev]);
                                           notify(`${d.user} deposited — +${referralReward} XENA bonus auto-approved to ${matchedRef.name}'s referral`);
                                         } else {
@@ -1211,7 +1213,7 @@ export const AdminPanel: React.FC<Props> = ({
                 <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <h3 className="text-sm font-extrabold flex items-center gap-2"><Gift className="w-4 h-4" /> Referral Program</h3>
-                    <p className="text-[10px] text-purple-100 mt-0.5">Each referred person who deposits = <b className="text-amber-300">+$0.38 worth of XENA</b>, auto-approved instantly.</p>
+                    <p className="text-[10px] text-purple-100 mt-0.5">Each referred person who deposits = <b className="text-amber-300">+₦800 worth of XENA</b>, auto-approved instantly.</p>
                   </div>
                   <span className="text-[10px] font-bold bg-white/15 border border-white/25 px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5"><Gem className="w-3.5 h-3.5" /> Earned this month: <span className="font-mono font-extrabold">{referralBonusTotal} XENA</span></span>
                 </div>
@@ -1241,7 +1243,7 @@ export const AdminPanel: React.FC<Props> = ({
                         </tr>
                       ))}
                       {referredRegistrations.length === 0 && (
-                        <tr><td colSpan={5} className="py-6 text-center text-[#9CA3AF] text-xs">No active referrals yet. Share referral links to start earning $0.38 worth of XENA per verified deposit.</td></tr>
+                        <tr><td colSpan={5} className="py-6 text-center text-[#9CA3AF] text-xs">No active referrals yet. Share referral links to start earning ₦800 worth of XENA per verified deposit.</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -1262,7 +1264,7 @@ export const AdminPanel: React.FC<Props> = ({
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="text-[9px] font-bold text-[#6D28D9] bg-purple-50 px-2 py-0.5 rounded-full border border-purple-100 font-mono">{ru.referrer}</span>
-                            {deposited ? <span className="text-[9px] font-bold text-[#16A34A] bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 flex items-center gap-1"><Check className="w-3 h-3" /> Deposited · +$0.38</span> : <span className="text-[9px] text-[#9CA3AF]">No deposit yet</span>}
+                            {deposited ? <span className="text-[9px] font-bold text-[#16A34A] bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 flex items-center gap-1"><Check className="w-3 h-3" /> Deposited · +₦800</span> : <span className="text-[9px] text-[#9CA3AF]">No deposit yet</span>}
                           </div>
                         </div>
                       );
@@ -1450,17 +1452,30 @@ export const AdminPanel: React.FC<Props> = ({
               <div className="bg-white border border-[#EDE9FE] rounded-2xl p-4 shadow-sm">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#EDE9FE]">
                   <h3 className="text-sm font-bold text-[#171717]">Active Investments — User Control</h3>
-                  <button
-                    onClick={async () => {
-                      if (!onPayoutAllVaults) return;
-                      if (!window.confirm('Pay out all matured vaults now?')) return;
-                      const res = await onPayoutAllVaults();
-                      notify(res.ok ? `Payout run processed ${res.processed ?? 0} vaults` : (res.error || 'Payout failed'));
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white text-[10px] font-bold cursor-pointer"
-                  >
-                    Run Manual Payout (All Matured)
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={async () => {
+                        if (!onAccrueNow) return;
+                        if (!window.confirm('Run the daily yield tick now (accrue earnings for all active vaults)?')) return;
+                        const res = await onAccrueNow();
+                        notify(res.ok ? `Yield tick processed ${res.processed ?? 0} vaults` : (res.error || 'Yield tick failed'));
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#0EA5E9] to-[#7C3AED] text-white text-[10px] font-bold cursor-pointer"
+                    >
+                      Run Yield Tick Now
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!onPayoutAllVaults) return;
+                        if (!window.confirm('Pay out all matured vaults now?')) return;
+                        const res = await onPayoutAllVaults();
+                        notify(res.ok ? `Payout run processed ${res.processed ?? 0} vaults` : (res.error || 'Payout failed'));
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white text-[10px] font-bold cursor-pointer"
+                    >
+                      Run Manual Payout (All Matured)
+                    </button>
+                  </div>
                 </div>
                 <div className="mt-3 overflow-x-auto">
                   <table className="w-full text-left text-xs min-w-[760px]">
@@ -1789,20 +1804,20 @@ export const AdminPanel: React.FC<Props> = ({
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <button onClick={() => { const next = promos.map((x) => x.id === p.id ? { ...x, active: !x.active } : x); setPromos(next); replacePromos(next).catch(() => {}); notify(`${p.code} ${p.active ? 'deactivated' : 'activated'}`); }} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border cursor-pointer ${p.active ? 'bg-emerald-50 text-[#16A34A] border-emerald-100' : 'bg-[#F8F7FC] text-[#6B7280] border-[#EDE9FE]'}`}>{p.active ? 'Active' : 'Off'}</button>
-                      <button onClick={() => { const next = promos.filter((x) => x.id !== p.id); setPromos(next); replacePromos(next).catch(() => {}); notify(`${p.code} deleted`); }} className="px-2 py-1 rounded-lg bg-red-50 text-red-600 text-[10px] font-bold border border-red-100 cursor-pointer"><Trash2 className="w-3 h-3" /></button>
+                      <button onClick={async () => { const next = promos.map((x) => x.id === p.id ? { ...x, active: !x.active } : x); setPromos(next); const res = await replacePromos(next); notify(res.ok ? `${p.code} ${p.active ? 'deactivated' : 'activated'}` : (res.error || 'Update failed')); }} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border cursor-pointer ${p.active ? 'bg-emerald-50 text-[#16A34A] border-emerald-100' : 'bg-[#F8F7FC] text-[#6B7280] border-[#EDE9FE]'}`}>{p.active ? 'Active' : 'Off'}</button>
+                      <button onClick={async () => { const next = promos.filter((x) => x.id !== p.id); setPromos(next); const res = await replacePromos(next); notify(res.ok ? `${p.code} deleted` : (res.error || 'Delete failed')); }} className="px-2 py-1 rounded-lg bg-red-50 text-red-600 text-[10px] font-bold border border-red-100 cursor-pointer"><Trash2 className="w-3 h-3" /></button>
                     </div>
                   </div>
                 ))}
               </div>
-              <button onClick={() => {
+              <button onClick={async () => {
                 const code = window.prompt('Enter the new promo code (e.g. SPRING100)');
                 if (!code || !code.trim()) return;
                 const reward = parseFloat(window.prompt('XENA reward amount for this code', '10') || '10');
                 const next = [{ id: `pr-${Date.now()}`, code: code.trim().toUpperCase(), value: reward, unit: 'XENA', used: 0, cap: 0, active: true }, ...promos];
                 setPromos(next);
-                replacePromos(next).catch(() => {});
-                notify('Promo code created');
+                const res = await replacePromos(next);
+                notify(res.ok ? 'Promo code created' : (res.error || 'Create failed'));
               }} className="mt-3 px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer"><Plus className="w-3 h-3" /> Create Code</button>
             </div>
           )}

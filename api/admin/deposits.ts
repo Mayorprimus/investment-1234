@@ -90,7 +90,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
         }
 
-        // Referral bonus: credit referrer $0.38 worth of XENA
+        // Referral bonus: credit referrer ₦800 worth of XENA
         try {
           const reward = await calculateReferralReward(sb);
           const { data: depositor } = await sb.from('profiles').select('referrer').eq('email', email).maybeSingle();

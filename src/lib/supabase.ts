@@ -133,7 +133,7 @@ export function mapInvestment(i: any): InvestmentPlan {
     startDate: i.started_at || i.startDate,
     endDate: i.ended_at || i.endDate,
     status: status === 'canceled' ? 'Pending' : status === 'matured' ? 'Matured' : 'Active',
-    dailyYieldXena: Number(i.dailyYieldXena || 0),
+    dailyYieldXena: Number(i.daily_yield_xena || i.dailyYieldXena || 0),
   };
 }
 

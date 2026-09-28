@@ -150,7 +150,7 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
   const totalInvested = plans.reduce((acc, p) => acc + p.investedAmount, 0);
   const totalEarned = plans.reduce((acc, p) => acc + p.earnedAmount, 0);
   const avgApy = (plans.reduce((acc, p) => acc + p.projectedReturnPercent, 0) / (plans.length || 1)).toFixed(1);
-  const dailyPayoutXena = totalInvested * (parseFloat(avgApy) / 100) / 365;
+  const dailyPayoutXena = plans.reduce((acc, p) => acc + Number(p.dailyYieldXena || 0), 0);
 
   // DB-backed catalog (min_deposit is the XENA cost; priceUsd re-derives from it).
   const activeCatalog = Array.isArray(catalog) && catalog.length > 0
@@ -198,7 +198,7 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-lg sm:text-xl font-extrabold tracking-tight">Invest & Earn</h1>
-                <span className="px-2 py-0.5 rounded-md bg-gradient-to-r from-amber-400 to-orange-500 text-[9px] font-extrabold uppercase tracking-wide shadow-sm">Up to 52% APY</span>
+                <span className="px-2 py-0.5 rounded-md bg-gradient-to-r from-amber-400 to-orange-500 text-[9px] font-extrabold uppercase tracking-wide shadow-sm">Up to 213% APY</span>
               </div>
               <p className="text-[11px] text-purple-100">Lock XENA into validator vaults & liquidity pools with daily compounding.</p>
             </div>
@@ -350,10 +350,12 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
             // Prevent buying a package that is already active (dedupe by name)
             const alreadyActive = plans.some((p) => p.name === plan.name);
             const xenaQty = plan.priceUsd / xenaUsdPrice;
-            // Maturity value: APY is the full 30-day term return, so
-            // principal grows by exactly apy% over the lock (e.g. $3 → $3.50).
+            // Maturity value: APY is the full return over the lock term, so
+            // principal grows by exactly apy% over the lock (e.g. $3 → $6.38
+            // on the 112.67% Micro Starter). Daily = apy% / term days.
             const maturityUsd = plan.priceUsd * (1 + (plan.apy || 0) / 100);
             const maturityXena = maturityUsd / xenaUsdPrice;
+            const dailyUsd = plan.priceUsd * (plan.apy || 0) / 100 / (plan.days || 30);
             return (
               <div key={plan.id} className="group relative bg-white border border-[#EDE9FE] rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all flex flex-col p-4">
                 <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${meta.grad}`} />
@@ -382,6 +384,7 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
                     <span className="text-[13px] font-black text-[#16A34A] font-mono">{formatFiat(maturityUsd)}</span>
                     <span className="text-[10px] font-bold text-[#16A34A] font-mono">≈ {formatXena(maturityXena)}</span>
                   </div>
+                  <span className="block text-[9px] font-bold text-emerald-600 mt-0.5">+{formatFiat(dailyUsd)}/day · {plan.days || 30}-day lock</span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 mb-3 text-center">

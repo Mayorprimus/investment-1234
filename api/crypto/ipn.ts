@@ -38,7 +38,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Credit the depositor via credit_payment RPC (handles welcome bonus $10 for first crypto deposit)
     await creditPayment(paymentId, 'nowpayments', amount, 'USD', xena, pay.email, pay.meta);
 
-    // Referral bonus: credit referrer $0.38 worth of XENA
+    // Referral bonus: credit referrer ₦800 worth of XENA
     try {
       const sb = requireSupabase();
       const reward = await calculateReferralReward(sb);

@@ -118,7 +118,7 @@ export const HomePage: React.FC<HomePageProps> = ({
       {/* 5. Announcement Highlight */}
       <AnnouncementCard onExploreP2P={() => onNavigateTab('p2p')} />
 
-      {/* 5.9 Refer & Earn Card — Copy link, $0.38 worth of XENA per verified referral */}
+      {/* 5.9 Refer & Earn Card — Copy link, ₦800 worth of XENA per verified referral */}
       <div className="bg-gradient-to-br from-[#1E1B4B] via-[#7C3AED] to-[#DB2777] rounded-[24px] p-5 sm:p-6 text-white shadow-lg relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="relative z-10">
@@ -130,7 +130,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-base sm:text-lg font-extrabold tracking-tight">Refer &amp; Earn</h3>
                 <span className="px-2 py-0.5 rounded-md bg-amber-400/90 text-[#1E1B4B] text-[9px] font-extrabold uppercase tracking-wide flex items-center gap-1">
-                  <Zap className="w-3 h-3" /> $0.38 worth of XENA per verified referral
+                  <Zap className="w-3 h-3" /> ₦800 worth of XENA per verified referral
                 </span>
               </div>
               <p className="text-[11px] text-purple-100 mt-1">Share your ref link. When a friend signs up <b className="text-white">and makes a deposit</b>, it's auto-approved instantly.</p>
