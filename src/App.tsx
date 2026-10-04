@@ -323,6 +323,29 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Poll personal state periodically so daily accrued vault earnings and
+  // progress land in the balance/investments view without a page reload.
+  useEffect(() => {
+    if (!authed) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const me = await getMyState();
+        if (!cancelled && me?.profile) {
+          applyAccount(mapProfileToAccount(me.profile, me.investments || []));
+        }
+      } catch {
+        // ignore transient failures
+      }
+    };
+    const id = window.setInterval(tick, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed]);
+
   // Persist: push the full shared admin state whenever it changes.
   // (Accounts are NOT included — they persist through the authenticated
   // account-save endpoint so hashes and balances stay server-protected.)
