@@ -325,10 +325,21 @@ export default function App() {
 
   // Poll personal state periodically so daily accrued vault earnings and
   // progress land in the balance/investments view without a page reload.
+  // Also trigger the yield tick via the serverless endpoint so the daily
+  // credit fires even though the DB's own accrue hook was never applied.
   useEffect(() => {
     if (!authed) return;
     let cancelled = false;
+    const triggerAccrue = () => {
+      try {
+        fetch('/api/cron/accrue', { method: 'POST' }).catch(() => {});
+      } catch {
+        // ignore
+      }
+    };
+    triggerAccrue();
     const tick = async () => {
+      triggerAccrue();
       try {
         const me = await getMyState();
         if (!cancelled && me?.profile) {

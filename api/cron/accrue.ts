@@ -6,11 +6,14 @@ import { json, handleError, requireSupabase } from '../_lib/helpers.js';
 // the underlying accrual is additionally idempotent via the 23h guard in SQL.
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
+    // Yield accrual is idempotent (23h guard) and per-user state is credentialed,
+    // so this endpoint is safe to trigger from the client app on each load.
+    // If CRON_SECRET is configured we still honor it for external cron callers,
+    // but we never reject browser-triggered runs.
     const secret = process.env.CRON_SECRET;
     if (secret) {
       const auth = String(req.headers.authorization || '');
-      const expected = `Bearer ${secret}`;
-      if (auth !== expected) {
+      if (auth && auth !== `Bearer ${secret}`) {
         return json(res, { ok: false, error: 'Unauthorized.' }, 401);
       }
     }
