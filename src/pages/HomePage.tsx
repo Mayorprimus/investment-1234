@@ -1,10 +1,9 @@
 import React from 'react';
-import { ArrowRight, TrendingUp, ShieldCheck, Users, PiggyBank, Clock3, Wallet, Sparkles, Plus, Check, Newspaper, Calendar, Gift, Copy, UserPlus, Zap, Trophy, Share2, BadgePercent } from 'lucide-react';
+import { ArrowRight, TrendingUp, ShieldCheck, Users, PiggyBank, Clock3, Check, Gift, Copy, Zap, Trophy, Share2, BadgePercent } from 'lucide-react';
 import { UserProfile, UserBalances, MarketStats, InvestmentPlan, Transaction, P2POffer, Announcement } from '../types';
 import { WelcomeSection } from '../components/WelcomeSection';
 import { MainBalanceCard } from '../components/MainBalanceCard';
 import { QuickActions } from '../components/QuickActions';
-import { AnnouncementCard } from '../components/AnnouncementCard';
 import { BonusCodeSection } from '../components/BonusCodeSection';
 import { XenaTokenBadge } from '../components/XenaLogo';
 import { INITIAL_ANNOUNCEMENTS } from '../data/initialData';
@@ -52,7 +51,6 @@ export const HomePage: React.FC<HomePageProps> = ({
 }) => {
   const topInvestment = investments[0];
   const recentThreeTx = transactions.slice(0, 3);
-  const featuredP2POffers = p2pOffers.slice(0, 2);
   const [copied, setCopied] = React.useState(false);
 
   const referralLink = `https://www.xenaventureshq.online/signup?ref=${referralCode}`;
@@ -86,7 +84,7 @@ export const HomePage: React.FC<HomePageProps> = ({
         redeemedCodes={redeemedBonusCodes}
       />
 
-      {/* 4.5 Social Tasks & Rewards Card — Navigate to Tasks page */}
+      {/* 5. Social Tasks & Rewards Card — Navigate to Tasks page */}
       <div className="bg-white border border-[#EDE9FE] rounded-[24px] shadow-sm overflow-hidden">
         <div className="bg-gradient-to-br from-[#1E1B4B] via-[#7C3AED] to-[#DB2777] p-5 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-40 h-40 bg-[#F59E0B]/20 rounded-full blur-3xl pointer-events-none" />
@@ -115,92 +113,59 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
       </div>
 
-      {/* 5. Announcement Highlight */}
-      <AnnouncementCard onExploreP2P={() => onNavigateTab('p2p')} />
 
-      {/* 5.9 Refer & Earn Card — Copy link, 20% commission per verified referral deposit */}
-      <div className="bg-gradient-to-br from-[#1E1B4B] via-[#7C3AED] to-[#DB2777] rounded-[24px] p-5 sm:p-6 text-white shadow-lg relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="relative z-10">
-          <div className="flex items-start gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-white/15 backdrop-blur border border-white/25 flex items-center justify-center shrink-0">
-              <Gift className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-base sm:text-lg font-extrabold tracking-tight">Refer &amp; Earn</h3>
-                <span className="px-2 py-0.5 rounded-md bg-amber-400/90 text-[#1E1B4B] text-[9px] font-extrabold uppercase tracking-wide flex items-center gap-1">
-                  <Zap className="w-3 h-3" /> 20% commission per verified deposit
-                </span>
+
+      {/* 5.9 Refer & Earn — redesigned header */}
+      <div className="bg-white border border-[#EDE9FE] rounded-[24px] shadow-sm overflow-hidden">
+        <div className="bg-gradient-to-r from-[#7C3AED] via-[#A855F7] to-[#DB2777] px-5 py-4 sm:px-6 sm:py-5 relative overflow-hidden">
+          <div className="absolute -right-8 -top-8 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="relative z-10 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-white/15 backdrop-blur border border-white/25 flex items-center justify-center shrink-0">
+                <Gift className="w-5 h-5 text-white" />
               </div>
-              <p className="text-[11px] text-purple-100 mt-1">Share your ref link. When a friend signs up <b className="text-white">and makes a deposit</b>, it's auto-approved instantly.</p>
-              <div className="flex items-center gap-2 mt-2">
-                <Users className="w-3.5 h-3.5 text-purple-200" />
-                <span className="text-[10px] text-purple-100 font-semibold">{referralCount} verified referral{referralCount === 1 ? '' : 's'} · earned</span>
+              <div>
+                <h3 className="text-base sm:text-lg font-extrabold text-white tracking-tight">Refer &amp; Earn</h3>
+                <p className="text-[11px] text-purple-100">Invite friends — earn when they deposit</p>
               </div>
             </div>
+            <div className="text-right shrink-0">
+              <span className="block text-2xl sm:text-3xl font-black text-amber-300 leading-none">20%</span>
+              <span className="text-[9px] font-bold text-white/90 uppercase tracking-widest">Commission</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-5 sm:p-6">
+          <p className="text-xs text-[#6B7280]">
+            Share your referral link. Every time a friend signs up and <b className="text-[#171717]">makes a deposit</b>,
+            you instantly receive <b className="text-[#6D28D9]">20% commission</b> of their deposit in your XENA balance.
+          </p>
+
+          <div className="flex items-center gap-2 mt-3">
+            <Users className="w-3.5 h-3.5 text-[#7C3AED]" />
+            <span className="text-[11px] text-[#6B7280] font-semibold">
+              {referralCount} verified referral{referralCount === 1 ? '' : 's'} · 20% commission per deposit
+            </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
-            <div className="flex items-center gap-2 bg-white/10 backdrop-blur border border-white/25 rounded-xl px-4 py-3 min-w-0">
-              <Share2 className="w-4 h-4 shrink-0 text-purple-200" />
-              <span className="font-mono font-bold text-xs sm:text-sm tracking-tight truncate min-w-0">{referralLink}</span>
+            <div className="flex items-center gap-2 bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-4 py-3 min-w-0">
+              <Share2 className="w-4 h-4 shrink-0 text-[#7C3AED]" />
+              <span className="font-mono font-bold text-xs sm:text-sm tracking-tight truncate min-w-0 text-[#171717]">{referralLink}</span>
             </div>
-            <div className="flex items-center gap-2 bg-white/10 backdrop-blur border border-white/25 rounded-xl px-4 py-3">
-              <BadgePercent className="w-4 h-4 shrink-0 text-purple-200" />
-              <span className="font-mono font-extrabold text-sm tracking-widest">{referralCode}</span>
+            <div className="flex items-center gap-2 bg-[#F8F7FC] border border-[#EDE9FE] rounded-xl px-4 py-3">
+              <BadgePercent className="w-4 h-4 shrink-0 text-[#7C3AED]" />
+              <span className="font-mono font-extrabold text-sm tracking-widest text-[#171717]">{referralCode}</span>
             </div>
           </div>
-          <div className="flex items-center gap-2 mt-3">
-            <button
-              onClick={copyReferral}
-              className={`px-4 py-3 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1.5 flex-1 ${copied ? 'bg-emerald-400 text-[#1E1B4B]' : 'bg-white text-[#7C3AED] hover:bg-purple-50'}`}
-            >
-              {copied ? <><Check className="w-3.5 h-3.5 stroke-[3]" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy Referral Link</>}
-            </button>
-          </div>
-        </div>
-      </div>
 
-      {/* 5.5 News Header — Latest Announcements */}
-      <div className="bg-white border border-[#EDE9FE] rounded-[24px] p-5 shadow-sm">
-        <div className="flex items-center justify-between pb-3 border-b border-[#EDE9FE]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#7C3AED] to-[#A855F7] text-white flex items-center justify-center shrink-0">
-              <Newspaper className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-[#171717]">Latest News &amp; Announcements</h3>
-              <p className="text-[11px] text-[#6B7280]">Stay updated on campaigns, staking and protocol upgrades</p>
-            </div>
-          </div>
           <button
-            onClick={() => onNavigateTab('announcements')}
-            className="text-xs font-bold text-[#6D28D9] hover:underline flex items-center gap-1 cursor-pointer shrink-0"
+            onClick={copyReferral}
+            className={`mt-3 w-full px-4 py-3 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${copied ? 'bg-emerald-500 text-white' : 'bg-gradient-to-r from-[#7C3AED] to-[#A855F7] text-white hover:opacity-90'}`}
           >
-            <span>View All</span>
-            <ArrowRight className="w-3.5 h-3.5" />
+            {copied ? <><Check className="w-3.5 h-3.5 stroke-[3]" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy Referral Link</>}
           </button>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-          {announcements.slice(0, 4).map((ann) => (
-            <button
-              key={ann.id}
-              onClick={() => onNavigateTab('announcements')}
-              className="group text-left p-3 rounded-2xl bg-[#F8F7FC] hover:bg-purple-50 border border-[#EDE9FE] hover:border-purple-200 transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${ann.tagColor}`}>{ann.tag}</span>
-                <span className="text-[9px] text-[#6B7280] flex items-center gap-1">
-                  <Calendar className="w-3 h-3" /> {ann.date}
-                </span>
-              </div>
-              <span className="block text-xs font-bold text-[#171717] leading-snug group-hover:text-[#6D28D9] transition-colors line-clamp-2">
-                {ann.title}
-              </span>
-            </button>
-          ))}
         </div>
       </div>
 
@@ -355,70 +320,6 @@ export const HomePage: React.FC<HomePageProps> = ({
               className="w-full mt-2 py-2 rounded-xl bg-[#F8F7FC] hover:bg-purple-50 text-[#6D28D9] font-bold text-xs border border-[#EDE9FE] transition-colors flex items-center justify-center gap-1 cursor-pointer"
             >
               <span>Full Transaction History</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* P2P Quick Spotlight */}
-          <div className="bg-white border border-[#EDE9FE] rounded-[24px] p-5 shadow-xs">
-            <div className="flex items-center justify-between pb-3 border-b border-[#EDE9FE]">
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-[#7C3AED]" />
-                <h3 className="text-sm font-bold text-[#171717]">P2P Trading Spotlight</h3>
-              </div>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-[#6D28D9] border border-purple-100">
-                0% Fees
-              </span>
-            </div>
-
-            <div className="space-y-2 py-2">
-              {featuredP2POffers.map((offer) => {
-                const methods = offer.paymentMethods || (offer.paymentMethod ? [offer.paymentMethod] : ['Bank Transfer']);
-                return (
-                  <div
-                    key={offer.id}
-                    onClick={() => onSelectP2POffer(offer, methods[0])}
-                    className="p-3 rounded-xl bg-[#F8F7FC] border border-[#EDE9FE] hover:border-purple-200 transition-colors flex items-center justify-between cursor-pointer"
-                  >
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-bold text-[#171717]">{offer.merchantName}</span>
-                        <span className="text-[9px] text-[#16A34A] bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-100">
-                          {offer.completionRate}%
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1 mt-1">
-                        {methods.slice(0, 2).map((m) => (
-                          <span
-                            key={m}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectP2POffer(offer, m);
-                            }}
-                            className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-50 text-[#6D28D9] border border-purple-100 hover:bg-purple-100"
-                          >
-                            {m}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="text-right">
-                      <span className="text-xs font-bold text-[#6D28D9] font-mono block">
-                        ${offer.pricePerXena.toFixed(2)}
-                      </span>
-                      <span className="text-[9px] text-[#6B7280]">per XENA</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <button
-              onClick={() => onNavigateTab('p2p')}
-              className="w-full mt-1 py-2 rounded-xl bg-purple-50 hover:bg-gradient-to-r hover:from-[#7C3AED] hover:to-[#A855F7] text-[#6D28D9] hover:text-white font-bold text-xs border border-purple-100 hover:border-transparent transition-all flex items-center justify-center gap-1 cursor-pointer"
-            >
-              <span>Explore P2P Marketplace</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
