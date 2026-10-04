@@ -136,11 +136,13 @@ export const InvestmentsPage: React.FC<InvestmentsPageProps> = ({
   const [currency, setCurrency] = useState<string>('USD');
   const stakedTimer = useRef<number | null>(null);
 
-  // Set default currency based on user's country
+  // Set default currency based on user's country (only when the country changes,
+  // not on every render, so a manual currency pick isn't overwritten)
+  const userCountry = user?.country;
   useEffect(() => {
-    const defaultCurrency = user?.country?.toLowerCase() === 'nigeria' ? 'NGN' : 'USD';
+    const defaultCurrency = userCountry?.toLowerCase() === 'nigeria' ? 'NGN' : 'USD';
     setCurrency(defaultCurrency);
-  }, [user]);
+  }, [userCountry]);
 
   // Global price is authoritative; guard against a bad/zero value so division
   // never explodes if settings are briefly missing.

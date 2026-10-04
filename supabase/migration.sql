@@ -570,11 +570,17 @@ end $$;
 --
 
 create or replace function public.get_my_state()
-returns jsonb language plpgsql stable security definer set search_path = public as $$
+returns jsonb language plpgsql volatile security definer set search_path = public as $$
 declare
   v jsonb;
 begin
   if auth.uid() is null then return null; end if;
+  -- Auto daily yield tick: a user's own app request accrues earnings for their
+  -- active vaults (the 23h guard in accrue_investments keeps it idempotent),
+  -- so the balance reflects freshly accrued daily earnings on every load.
+  begin
+    perform public.accrue_investments();
+  exception when others then null; end;
   select jsonb_build_object(
     'profile', to_jsonb(p),
     'investments', coalesce((select jsonb_agg(to_jsonb(i) order by i.created_at desc) from investments i where i.user_id = p.id), '[]'::jsonb),
