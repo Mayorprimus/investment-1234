@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireEnv, json, readJsonBody, handleError, getUserByToken, getSetting, findPendingPayment, updatePendingPayment, requireSupabase, appendBlobDeposit, creditPayment } from '../_lib/helpers.js';
+import { requireEnv, json, readJsonBody, handleError, getUserByToken, getSetting, findPendingPayment, updatePendingPayment, requireSupabase, appendBlobDeposit, creditPayment, creditUser, calculateReferralReward } from '../_lib/helpers.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -41,6 +41,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await updatePendingPayment(paymentId, { status: 'confirmed', xena });
     await creditPayment(paymentId, 'nowpayments', amountFiat, 'USD', xena, pay.email, pay.meta);
+
+    // Referral bonus: 20% commission of the depositor's credited XENA
+    try {
+      const sb = requireSupabase();
+      const reward = calculateReferralReward(xena);
+      const { data: depositor } = await sb.from('profiles').select('referrer').eq('email', pay.email).maybeSingle();
+      if (depositor?.referrer && reward > 0) {
+        const { data: referrer } = await sb.from('profiles').select('email, name').ilike('referral_code', String(depositor.referrer)).maybeSingle();
+        if (referrer && referrer.email !== pay.email) {
+          await creditUser(referrer.email, reward, {
+            title: 'Referral Bonus',
+            type: 'referral',
+            notifTitle: 'Referral Deposit Bonus',
+            notifMessage: `Your referral completed a deposit. +${reward.toLocaleString()} XENA credited!`,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('NOWPayments status: referral bonus failed', (e as any)?.message || e);
+    }
 
     // Mirror to the admin Deposit Ledger so it shows as Completed.
     try {

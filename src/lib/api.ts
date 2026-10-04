@@ -801,8 +801,9 @@ export async function adminGetAllTasks(): Promise<{ ok: boolean; error?: string;
   }
 }
 
-// Calculate referral reward based on the current XENA NGN rate (₦800 worth)
-export function calculateReferralReward(xenaNgnRate: number = 0.266): number {
-  if (!xenaNgnRate || xenaNgnRate <= 0) return 3008; // fallback at ₦0.266
-  return Math.round(800 / xenaNgnRate);
+// Calculate referral reward: 20% commission of the referred deposit's credited XENA
+export function calculateReferralReward(depositedXena: number): number {
+  const dep = Number(depositedXena) || 0;
+  if (!(dep > 0)) return 0;
+  return Math.round(dep * 0.2 * 10000) / 10000;
 }

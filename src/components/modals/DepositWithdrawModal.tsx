@@ -480,7 +480,7 @@ export const DepositWithdrawModal: React.FC<DepositWithdrawModalProps> = ({
                     {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Validating payment...</> : <><Check className="w-4 h-4" /> I've Paid — Verify</>}
                   </button>
 
-                  <button onClick={() => { setWaitingPayment(false); setTxRef(''); resetState(); }} className="w-full py-2 text-xs font-bold text-[#6B7280] hover:text-[#171717] transition-colors">Cancel</button>
+                  <button onClick={() => { setWaitingPayment(false); resetState(); }} className="w-full py-2 text-xs font-bold text-[#6B7280] hover:text-[#171717] transition-colors">Cancel</button>
                 </div>
               )}
 

@@ -533,7 +533,6 @@ export const AdminPanel: React.FC<Props> = ({
   const pendingDepositCount = deposits.filter((d) => d.status === 'Pending').length;
 
   const referredRegistrations = registeredUsers.filter((ru) => ru.referrer);
-  const referralRewardPerDeposit = calculateReferralReward(xenaNgnRate);
   // Derive the overview from REAL referrals: every registered account that signed
   // up under a unique code, resolved back to that code's owner (the referrer).
   const referrerOwnerByCode = new Map<string, { name: string; email: string }>();
@@ -553,6 +552,9 @@ export const AdminPanel: React.FC<Props> = ({
   const referralOverview = Array.from(referredByCode.entries()).map(([code, matched]) => {
     const owner = referrerOwnerByCode.get(code);
     const deposited = matched.filter((ru) => deposits.some((d) => d.email.toLowerCase() === ru.email.toLowerCase()));
+    const earnedXena = deposits
+      .filter((d) => matched.some((ru) => ru.email.toLowerCase() === d.email.toLowerCase()))
+      .reduce((s, d) => s + calculateReferralReward(Number(d.xena || 0)), 0);
     return {
       id: `ref-${code}`,
       name: owner?.name || `Inviter (${code})`,
@@ -560,7 +562,7 @@ export const AdminPanel: React.FC<Props> = ({
       count: matched.length,
       newCount: 0,
       depositedCount: deposited.length,
-      earnedXena: deposited.length * referralRewardPerDeposit,
+      earnedXena,
     };
   });
   const referralBonusTotal = referralOverview.reduce((s, r) => s + r.earnedXena, 0);
@@ -720,7 +722,7 @@ export const AdminPanel: React.FC<Props> = ({
                     <span className="w-9 h-9 rounded-xl bg-purple-50 text-[#7C3AED] flex items-center justify-center"><UserPlus className="w-4 h-4" /></span>
                     <div className="text-left">
                       <span className="block text-xs font-bold text-[#171717]">{referralBonusTotal} XENA referral bonuses</span>
-                      <span className="block text-[10px] text-[#6B7280]">View referrals — ₦800 worth of XENA auto-approved per verified deposit</span>
+                      <span className="block text-[10px] text-[#6B7280]">View referrals — 20% commission in XENA auto-approved per verified deposit</span>
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-[#6B7280]" />
@@ -1065,7 +1067,7 @@ export const AdminPanel: React.FC<Props> = ({
                                       if (res.ok) {
                                         setDeposits((prev) => prev.map((x) => x.id === d.id ? { ...x, status: 'Completed' } : x));
                                         if (matchedRef) {
-                                          const referralReward = calculateReferralReward(xenaNgnRate);
+                                          const referralReward = calculateReferralReward(Number(d.xena || 0));
                                           setBonusLog((prev) => [{ id: `b-${Date.now()}`, code: matchedRef.refCode, name: matchedRef.name, xena: referralReward, time: 'Just now' }, ...prev]);
                                           notify(`${d.user} deposited — +${referralReward} XENA bonus auto-approved to ${matchedRef.name}'s referral`);
                                         } else {
@@ -1213,7 +1215,7 @@ export const AdminPanel: React.FC<Props> = ({
                 <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <h3 className="text-sm font-extrabold flex items-center gap-2"><Gift className="w-4 h-4" /> Referral Program</h3>
-                    <p className="text-[10px] text-purple-100 mt-0.5">Each referred person who deposits = <b className="text-amber-300">+₦800 worth of XENA</b>, auto-approved instantly.</p>
+                    <p className="text-[10px] text-purple-100 mt-0.5">Each referred person who deposits = <b className="text-amber-300">+20% commission in XENA</b>, auto-approved instantly.</p>
                   </div>
                   <span className="text-[10px] font-bold bg-white/15 border border-white/25 px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5"><Gem className="w-3.5 h-3.5" /> Earned this month: <span className="font-mono font-extrabold">{referralBonusTotal} XENA</span></span>
                 </div>
@@ -1243,7 +1245,7 @@ export const AdminPanel: React.FC<Props> = ({
                         </tr>
                       ))}
                       {referredRegistrations.length === 0 && (
-                        <tr><td colSpan={5} className="py-6 text-center text-[#9CA3AF] text-xs">No active referrals yet. Share referral links to start earning ₦800 worth of XENA per verified deposit.</td></tr>
+                        <tr><td colSpan={5} className="py-6 text-center text-[#9CA3AF] text-xs">No active referrals yet. Share referral links to start earning 20% commission per verified deposit.</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -1264,7 +1266,7 @@ export const AdminPanel: React.FC<Props> = ({
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="text-[9px] font-bold text-[#6D28D9] bg-purple-50 px-2 py-0.5 rounded-full border border-purple-100 font-mono">{ru.referrer}</span>
-                            {deposited ? <span className="text-[9px] font-bold text-[#16A34A] bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 flex items-center gap-1"><Check className="w-3 h-3" /> Deposited · +₦800</span> : <span className="text-[9px] text-[#9CA3AF]">No deposit yet</span>}
+                            {deposited ? <span className="text-[9px] font-bold text-[#16A34A] bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 flex items-center gap-1"><Check className="w-3 h-3" /> Deposited · +20%</span> : <span className="text-[9px] text-[#9CA3AF]">No deposit yet</span>}
                           </div>
                         </div>
                       );
