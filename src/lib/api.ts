@@ -638,6 +638,35 @@ export async function flutterwaveVerify(amountNgn?: number): Promise<{ ok: boole
   return { ok: true, xena: Number(data.xena || 0) };
 }
 
+// ---------- Daily Spin ----------
+export async function dailySpinCheck(): Promise<{ ok: boolean; canSpin?: boolean; nextSpinAt?: number; error?: string }> {
+  const token = await currentAccessToken();
+  if (!token) return { ok: false, error: 'Not signed in.' };
+  try {
+    const res = await fetch(`/api/spin?token=${encodeURIComponent(token)}`);
+    const data = await res.json().catch(() => null);
+    return data || { ok: false, error: 'Network error.' };
+  } catch {
+    return { ok: false, error: 'Network error.' };
+  }
+}
+
+export async function dailySpin(): Promise<{ ok: boolean; reward?: number; error?: string }> {
+  const token = await currentAccessToken();
+  if (!token) return { ok: false, error: 'Not signed in.' };
+  try {
+    const res = await fetch('/api/spin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    const data = await res.json().catch(() => null);
+    return data || { ok: false, error: 'Network error.' };
+  } catch {
+    return { ok: false, error: 'Network error.' };
+  }
+}
+
 // Legacy aliases for compatibility
 export const paystackInitialize = flutterwaveInitialize;
 export const paystackVerify = flutterwaveVerify;

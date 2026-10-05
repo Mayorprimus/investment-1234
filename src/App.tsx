@@ -66,6 +66,7 @@ import { SecurityModal } from './components/modals/SecurityModal';
 import { SearchModal } from './components/SearchModal';
 import { NotificationsDrawer } from './components/NotificationsDrawer';
 import { WelcomeModal } from './components/modals/WelcomeModal';
+import { DailySpinModal } from './components/modals/DailySpinModal';
 import { TasksWelcomeModal } from './components/modals/TasksWelcomeModal';
 import { InvestWelcomeModal } from './components/modals/InvestWelcomeModal';
 
@@ -223,6 +224,13 @@ export default function App() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const [spinOpen, setSpinOpen] = useState(false);
+
+  // Show the daily spin popup each time a user is authenticated.
+  useEffect(() => {
+    if (authed) setSpinOpen(true);
+  }, [authed]);
 
   // Onboarding chain: Welcome → Tasks → Invest (runs once per user via localStorage)
   useEffect(() => {
@@ -1450,6 +1458,30 @@ setBalances((prev) => ({
           setWelcomeOpen(false);
           setDepositWithdrawTab('deposit');
           setDepositWithdrawOpen(true);
+        }}
+      />
+      <DailySpinModal
+        open={spinOpen}
+        onClose={() => setSpinOpen(false)}
+        onWon={(reward) => {
+          setBalances((prev) => ({
+            ...prev,
+            availableXena: prev.availableXena + reward,
+            totalBalance: prev.totalBalance + reward,
+            totalXena: prev.totalXena + reward,
+          }));
+          setTransactions((prev) => [
+            {
+              id: `spin-${Date.now()}`,
+              type: 'bonus',
+              title: 'Daily Spin Reward',
+              amount: reward,
+              unit: 'XENA',
+              timestamp: 'Just now',
+              status: 'completed',
+            } as Transaction,
+            ...prev,
+          ]);
         }}
       />
       <TasksWelcomeModal
